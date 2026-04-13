@@ -1,18 +1,8 @@
 import re
 import logging
+from src.constants import SMALL_WORDS, VALID_TITLE_REGEX
 
-# Configuration
-SMALL_WORDS = {'and', 'or', 'the', 'of', 'in', 'on', 'a', 'an', 'to', 'at'}
-# Permitted: Alphanumeric, spaces, and specific punctuation
-VALID_TITLE_REGEX = r"^[a-zA-Z0-9\s\-\'\,\"\.\?\!]+$"
-
-# Professional Logging Setup (No emojis)
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
-
-class TitleProcessingError(Exception):
-    """Custom exception for title-related errors."""
-    pass
 
 
 def is_valid_english_title(title: str) -> bool:
@@ -101,6 +91,8 @@ def normalize_book_title() -> None:
 
         # 3. Handle Invalid Input (Non-English, Hebrew, or symbols only)
         print("Invalid input detected.\nPlease ensure the title is in English and contains alphanumeric characters. Try again.")
+
+        return metadata
 
 
 if __name__ == "__main__":

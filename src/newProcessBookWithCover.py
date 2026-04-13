@@ -1,21 +1,20 @@
-import pyperclip
 import subprocess
 import os
 from PyPDF2 import PdfReader, PdfWriter, PageObject
 import psutil #to check if Excel is running and terminate it
 import re
 from openpyxl import load_workbook
-from PIL import Image
 # for spinner
 import sys
 import time
 import threading
 
-from extract_pdf_pages import extractSectionPages, yesOrNo, debugPrint
+from extract_pdf_pages import extractSectionPages, yesOrNo
 from pdfReverse import reversePages
 from toc import clean_leading_dots, correct_line
-from processBook import print_green, print_red, deleteFile, moveJpgFile, getInputPdf, image_to_pdf, get_pdf_page_count, validate_toc_pages, askOffset
+from processBook import print_green, print_red, deleteFile, image_to_pdf, get_pdf_page_count, validate_toc_pages, askOffset
 from utils.norm_book_title import normalize_book_title
+from src.logic.pdf_processor import process_pdf
 
 spinner_running = False  # Global flag to control the spinner
 
@@ -356,19 +355,7 @@ def createToc(reader, pdf_writer, file_path, hasCover):
 
 def main():
     normalize_book_title()
-
-    # input_pdf_path = getInputPdf()
-    #
-    # sourceFolder = os.path.dirname(input_pdf_path)
-    # folderName = os.path.basename(sourceFolder)
-    #
-    # coversFolder = r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\קבצי ספרים מוכנים להעלאה לאמזון\00 תמונות של כריכות ספרים לאמזון"
-    #
-    # updateExcelCellAndOpenExcel(moveJpgFile(sourceFolder, coversFolder), folderName)
-    #
-    # finFileName = remove_bleed(input_pdf_path, folderName)
-    #
-    # extractPages(finFileName, input_pdf_path, folderName)
+    process_pdf()
 
 if __name__ == "__main__":
     main()
