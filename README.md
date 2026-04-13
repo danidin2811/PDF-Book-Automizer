@@ -35,7 +35,8 @@ PDF-Book-Automizer/
 │   └── processBook.py  # PDF & File system automation
 ├── assets/             # UI Icons and brand assets
 ├── .gitignore          # Keeps work-specific PDFs/Data private
-└── README.md           # Documentation```
+└── README.md           # Documentation
+```
 
 ## ⚙️ Installation & Usage
 
@@ -46,12 +47,17 @@ Ensure you have **Python 3.10** or higher installed on your system. You can chec
 Open your terminal or PowerShell and run:
 ```bash
 git clone https://github.com/danidin2811/PDF-Book-Automizer.git
-cd PDF-Book-Automizer```
+cd PDF-Book-Automizer
+```
 
 ### 3. Install Dependencies
 This project uses several specialized libraries for PDF manipulation and GUI rendering. Install them all at once using the provided requirements file:
+```bash
 pip install -r requirements.txt
+```
 
 ### 4. Run the Application
 To launch the graphical interface, execute the main entry point located in the src directory:
+```bash
 python src/main_app.py
+```
