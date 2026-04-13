@@ -1,0 +1,5 @@
+customtkinter
+PyPDF2
+openpyxl
+Pillow
+psutil
