@@ -15,6 +15,7 @@ from extract_pdf_pages import extractSectionPages, yesOrNo, debugPrint
 from pdfReverse import reversePages
 from toc import clean_leading_dots, correct_line
 from processBook import print_green, print_red, deleteFile, moveJpgFile, getInputPdf, image_to_pdf, get_pdf_page_count, validate_toc_pages, askOffset
+from utils.norm_book_title import normalize_book_title
 
 spinner_running = False  # Global flag to control the spinner
 
@@ -353,49 +354,21 @@ def createToc(reader, pdf_writer, file_path, hasCover):
         print_red(f"An error occurred: {e}")
         return None
 
-def format_book_title(title: str) -> str:
-
-    small_words = {'and', 'or', 'the', 'of', 'in', 'on', 'a', 'an'}
-    words = title.split()
-    formatted_words = [
-        word.capitalize() if word.lower() not in small_words or i == 0 else word.lower()
-        for i, word in enumerate(words)
-    ]
-    return ' '.join(formatted_words)
-
-def normTitle():
-    title = input("Enter book title: ")
-
-    # Replace hyphens with spaces
-    title = title.replace('-', ' ')
-
-    formattedBookTitle = format_book_title(title)
-    print(f"Book title is: {formattedBookTitle}")
-
-    # Remove non-alphanumeric characters except spaces
-    newTitle = re.sub(r'[^a-zA-Z0-9\s]', '', title)
-
-    # Replace multiple spaces with one, convert to lowercase, and replace spaces with underscores
-    newTitle = re.sub(r'\s+', ' ', newTitle).strip().lower().replace(' ', '_')
-
-    print(f"Normalized title: {newTitle}")
-
-    
 def main():
-    normTitle()
+    normalize_book_title()
 
-    input_pdf_path = getInputPdf()
-
-    sourceFolder = os.path.dirname(input_pdf_path)
-    folderName = os.path.basename(sourceFolder)
-    
-    coversFolder = r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\קבצי ספרים מוכנים להעלאה לאמזון\00 תמונות של כריכות ספרים לאמזון"
-    
-    updateExcelCellAndOpenExcel(moveJpgFile(sourceFolder, coversFolder), folderName)
-
-    finFileName = remove_bleed(input_pdf_path, folderName)
-
-    extractPages(finFileName, input_pdf_path, folderName)
+    # input_pdf_path = getInputPdf()
+    #
+    # sourceFolder = os.path.dirname(input_pdf_path)
+    # folderName = os.path.basename(sourceFolder)
+    #
+    # coversFolder = r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\קבצי ספרים מוכנים להעלאה לאמזון\00 תמונות של כריכות ספרים לאמזון"
+    #
+    # updateExcelCellAndOpenExcel(moveJpgFile(sourceFolder, coversFolder), folderName)
+    #
+    # finFileName = remove_bleed(input_pdf_path, folderName)
+    #
+    # extractPages(finFileName, input_pdf_path, folderName)
 
 if __name__ == "__main__":
     main()
