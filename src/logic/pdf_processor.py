@@ -1,5 +1,3 @@
-import logging
-import os
 from src.constants import COVERS_FOLDER
 from pathlib import Path
 from typing import Optional
@@ -8,8 +6,7 @@ import shutil
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.excel_tools import run_excel_update_workflow
 from src.logic.file_operations import validate_pdf_path, move_cover_image
-from src.logic.system_tools import delete_file
-from utils.input_output_tools import print_green, print_red, yes_or_no
+from utils.input_output_tools import print_green, print_red, yes_or_no, get_page_range_ui
 
 
 def get_input_pdf_path() -> Path:
@@ -36,20 +33,17 @@ def get_input_pdf_path() -> Path:
         print_red(f"Error: {error_message}")
         prompt = "\nPlease try again. Drag and drop the PDF file and press Enter: "
 
-def get_page_range_ui(section: str, total_pages: int):
-    """UI function to get ranges from user."""
-    while True:
-        try:
-            start = int(input(f"Enter start page for {section.upper()}: "))
-            end = int(input(f"Enter end page for {section.upper()}: "))
+def setup_working_directory() -> tuple[Path, Path, str]:
+    """
+        Prompts for the PDF path and derives the folder context.
+        Returns: (input_pdf_path, source_folder, folder_name)
+    """
 
-            if 1 <= start <= end <= total_pages:
-                return start, end
+    input_pdf_path = get_input_pdf_path()
+    source_folder = input_pdf_path.parent  # get the source folder of the PDF file
+    folder_name = str(source_folder.name)
 
-            print_red(f"Invalid range. Total pages: {total_pages}")
-
-        except ValueError:
-            print_red("Please enter numbers only.")
+    return input_pdf_path, source_folder, folder_name
 
 def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optional[str]:
     """
@@ -83,51 +77,64 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
             print("Operation cancelled by user.")
             return None
 
+def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_name: str) -> bool:
+    """
+    Handles the physical file copying and section extraction logic.
+    Returns True to continue, False to stop the main process.
+    """
+
+    if not yes_or_no("Do you want to extract section PDFs? "):
+        return True
+
+    fin_file_path = source_folder / f"{folder_name}_fin.pdf"
+    book_title = source_folder.name
+
+    try:
+        shutil.copy2(input_pdf_path, fin_file_path)
+        print_green(f"Created working file: {fin_file_path.name}")
+    except Exception as e:
+        print_red(f"Failed to create fin file: {e}")
+        return False  # This replaces the 'interrupting' return
+
+    total_pages = get_pdf_page_count(fin_file_path)
+    if not total_pages:
+        return False
+
+    ranges = {}
+    for sec in ['con', 'pre', 'chap']:
+        ranges[sec] = get_page_range_ui(sec, total_pages)
+
+    if yes_or_no("Does the book have an English section? "):
+        ranges['english'] = get_page_range_ui('english', total_pages)
+
+        extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
+
+        if handle_english_section_logic(source_folder, folder_name):
+            print_green(f"Successfully processed English section for {folder_name}")
+
+    else:
+        extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
+
+    return True
+
 def process_pdf():
-    # 1. Setup paths
-    input_pdf_path = get_input_pdf_path()
-    source_folder = input_pdf_path.parent # get the source folder of the PDF file
-    folder_name = str(source_folder.name)
+    input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
 
     # 2. Process Cover and Excel
-    danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
+    # danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
+    #
+    # if not danacode:
+    #     print_red("Process halted: Cover error.")
+    #
+    # if not run_excel_update_workflow(danacode, folder_name):
+    #     print_red("Process halted: Excel error.")
+    #     return
 
-    if not danacode:
-        print_red("Process halted: Cover error.")
-
-    if not run_excel_update_workflow(danacode, folder_name):
-        print_red("Process halted: Excel error.")
+    # 3. Handle PDF Extraction
+    if not run_extraction_workflow(input_pdf_path, source_folder, folder_name):
+        print_red("Extraction workflow failed.")
         return
 
-        # 3. Handle PDF Extraction
-    if yes_or_no("Do you want to extract section PDFs? "):
-        fin_file_path = source_folder / f"{folder_name}_fin.pdf"
-
-        try:
-            shutil.copy2(input_pdf_path, fin_file_path)
-            print_green(f"Created working file: {fin_file_path.name}")
-        except Exception as e:
-            print_red(f"Failed to create fin file: {e}")
-            return
-
-        total_pages = get_pdf_page_count(fin_file_path)
-
-        if total_pages:
-            ranges = {}
-            for sec in ['con', 'pre', 'chap']:
-                ranges[sec] = get_page_range_ui(sec, total_pages)
-
-            # Extract English if it exists
-            if yes_or_no("Does the book have an English section? "):
-                ranges['english'] = get_page_range_ui('english', total_pages)
-
-                extract_pdf_sections(folder_name, fin_file_path, ranges, source_folder)
-
-                if handle_english_section_logic(source_folder, folder_name):
-                    print_green(f"Successfully processed English section for {folder_name}")
-
-            else:
-                extract_pdf_sections(fin_file_path, ranges, source_folder)
 
 if __name__ == "__main__":
     process_pdf()

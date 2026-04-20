@@ -14,3 +14,19 @@ def yes_or_no(prompt):
         elif choice in {"n", "no"}:
             return False
         print_red("Invalid input. Please enter 'y' for yes or 'n' for no.")
+
+
+def get_page_range_ui(section: str, total_pages: int):
+    """UI function to get ranges from user."""
+    while True:
+        try:
+            start = int(input(f"Enter start page for {section.upper()}: "))
+            end = int(input(f"Enter end page for {section.upper()}: "))
+
+            if 1 <= start <= end <= total_pages:
+                return start, end
+
+            print_red(f"Invalid range. Total pages: {total_pages}")
+
+        except ValueError:
+            print_red("Please enter numbers only.")
