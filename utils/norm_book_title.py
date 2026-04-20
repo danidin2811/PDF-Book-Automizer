@@ -1,6 +1,7 @@
 import re
 import logging
 from src.constants import SMALL_WORDS, VALID_TITLE_REGEX
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -69,7 +70,7 @@ def get_book_metadata(raw_title: str) -> dict:
     }
 
 
-def normalize_book_title() -> None:
+def normalize_book_title() -> Optional[dict]:
     """
     CLI wrapper that persists until a valid English title or empty bypass is provided.
     """

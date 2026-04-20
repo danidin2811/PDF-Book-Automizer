@@ -2,22 +2,12 @@ from pathlib import Path
 from typing import Optional
 import shutil
 
+from src.gemini.gemini_prompt import handle_gemini_toc_transcription
 from src.constants import COVERS_FOLDER
 from src.logic.excel_tools import run_excel_update_workflow
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
-from utils.input_output_tools import print_green, print_red, yes_or_no, get_page_range_ui
-
-def wait_for_ready_signal():
-    """Confirms system requirements are met before starting."""
-    checklist = (
-        "\nPRE-PROCESSING CHECKLIST:\n"
-        "1. Close the Excel tracking table\n"
-        "2. Ensure the numeric JPG cover is in the source folder\n"
-        "3. Ensure the JPG filename matches the DanaCode\n\n"
-        "Press Enter to start the workflow: "
-    )
-    input(checklist)
+from utils.input_output_tools import *
 
 def get_input_pdf_path() -> Path:
     """
@@ -133,7 +123,14 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
     return True, con_file_path
 
 def process_pdf():
-    wait_for_ready_signal()
+    checklist = (
+        "\nPRE-PROCESSING CHECKLIST:\n"
+        "1. Close the Excel tracking table\n"
+        "2. Ensure the numeric JPG cover is in the source folder\n"
+        "3. Ensure the JPG filename matches the DanaCode\n\n"
+    )
+    
+    wait_for_ready_signal(checklist)
 
     input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
 
@@ -155,7 +152,7 @@ def process_pdf():
 
     if con_file_path:
         print_green(f"Ready for transcription: {con_file_path.name}")
-
+        handle_gemini_toc_transcription(input_pdf_path, con_file_path)
 
 
 if __name__ == "__main__":

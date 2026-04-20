@@ -1,6 +1,8 @@
 from utils.norm_book_title import normalize_book_title
 from logic.pdf_processor import process_pdf
+from utils.input_output_tools import wait_for_ready_signal
 
 if __name__ == "__main__":
-    normalize_book_title()
+    book_title = normalize_book_title()['folder_name']
+    wait_for_ready_signal(f"Please change the folder name of the book folder to {book_title}")
     process_pdf()
