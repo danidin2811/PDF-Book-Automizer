@@ -1,152 +1,133 @@
-import re
+import logging
 import os
-import shutil
 from src.constants import COVERS_FOLDER
-from PyPDF2 import PdfReader
+from pathlib import Path
+from typing import Optional
+import shutil
 
-def print_red(text):
-    """Prints text in red color."""
-    print("\033[31m" + text + "\033[0m")
+from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
+from src.logic.excel_tools import run_excel_update_workflow
+from src.logic.file_operations import validate_pdf_path, move_cover_image
+from src.logic.system_tools import delete_file
+from utils.input_output_tools import print_green, print_red, yes_or_no
 
-def print_green(text):
-    """Prints text in green color."""
-    print("\033[32m" + '\n' + text + "\033[0m")
 
-def validate_pdf_file(input_pdf_path):
-    """Validates the given PDF file path."""
+def get_input_pdf_path() -> Path:
+    """
+        Retrieves and validates a PDF path from the user.
 
-    if not os.path.isfile(input_pdf_path):
-        return False, "Invalid file path. Please check and try again."
-    if not input_pdf_path.lower().endswith('.pdf'):
-        return False, "This file is not a PDF."
-    return True, None
+        Handles Windows 11 drag-and-drop quote cleaning and ensures file validity.
 
-def get_input_pdf():
-    input_pdf_path = input("\nEnter the path of the PDF file: ").replace('"', '')
+        Returns:
+            Path: Validated object pointing to the target PDF.
+        """
+
+    prompt = "\nEnter the path of the PDF file (or drag and drop it here): "
 
     while True:
-        is_valid, error = validate_pdf_file(input_pdf_path)
+        raw_input = input(prompt).strip().replace('"', '')
+
+        is_valid, error_message = validate_pdf_path(raw_input)
+
         if is_valid:
-            break
-        print_red(error)
-        input_pdf_path = input("\nDrag and drop the PDF file here and press Enter: ").strip('"')
+            return Path(raw_input)
 
-    return input_pdf_path
+        # Provide feedback and loop back
+        print_red(f"Error: {error_message}")
+        prompt = "\nPlease try again. Drag and drop the PDF file and press Enter: "
 
-def yesOrNo(prompt):
-    while True:
-        choice = input(prompt).strip().lower()
-        if choice in {"y", "yes"}:
-            return True
-        elif choice in {"n", "no"}:
-            return False
-        print_red("Invalid input. Please enter 'y' for yes or 'n' for no.")
-
-def moveJpgFile(sourceFolder, destinationFolder):
-    while True:
-        if not os.path.exists(destinationFolder):
-            os.makedirs(destinationFolder)
-
-        for fileName in os.listdir(sourceFolder):
-            if re.match(r"^\d{4}\.jpg$", fileName):  # Matches filenames like "1234.jpg"
-                sourcePath = os.path.join(sourceFolder, fileName)
-                destinationPath = os.path.join(destinationFolder, fileName)
-                shutil.move(sourcePath, destinationPath)
-                print_green(f"Moved: {fileName} successfully")
-                return fileName.removesuffix(".jpg")  # Exit the function after successfully moving the file
-        else:
-            print_red("\njpg file of front cover with danacode file name wasn't found\n")
-            choice = yesOrNo("Would you like to try again? (y/n): ")
-
-            if not choice:
-                print("\nok")
-                return None
-
-
-def get_pdf_page_count(file_path):
-    """Returns the total number of pages in a PDF file."""
-
-    try:
-        with open(file_path, 'rb') as pdf_file:
-            return len(PdfReader(pdf_file).pages)
-    except Exception as e:
-        print_red(f"Error reading PDF file: {e}")
-        return None
-
-def get_page_range(section, total_pages, withCover):
+def get_page_range_ui(section: str, total_pages: int):
+    """UI function to get ranges from user."""
     while True:
         try:
-            start = int(input(f"\nEnter the start page for {section.upper()}: "))
-            if not (1 <= start <= total_pages):
-                print_red(f"\nPage number must be between 1 and {total_pages}.")
-                continue  # Restart loop
+            start = int(input(f"Enter start page for {section.upper()}: "))
+            end = int(input(f"Enter end page for {section.upper()}: "))
 
-            end = int(input(f"\nEnter the end page for {section.upper()}: "))
-            if not (start <= end <= total_pages):
-                print_red(f"\nPage number must be between {start} and {total_pages}.")
-                continue  # Restart loop
+            if 1 <= start <= end <= total_pages:
+                return start, end
 
-            print(f"\nYou entered start page: {start}, end page: {end} for section: {section}")
-            confirm = yesOrNo("Are these correct? (y/n): ")
+            print_red(f"Invalid range. Total pages: {total_pages}")
 
-            if confirm:
-                return (start + 2, end + 2) if withCover else (start, end)
-
-            print_red("Re-entering page range...\n")
         except ValueError:
-            print_red("\nPlease enter a valid number.")
+            print_red("Please enter numbers only.")
 
-def extractSectionPages(file_path, folderName, withCover=False):
-    total_pages = get_pdf_page_count(file_path)
-    thereIsEnglish = ''
+def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optional[str]:
+    """
+    Orchestrates the movement of a book cover JPG based on its DanaCode.
 
-    # Get ranges for each section
-    ranges = {}
-    for section in ['con', 'pre', 'chap', 'english']:
-        if section == 'english':
-            thereIsEnglish = yesOrNo("Does the book have an English section? ")
-            if thereIsEnglish:
-                ranges[section] = get_page_range(section, total_pages, withCover)
+    This function continuously attempts to locate and move a numeric JPG file from the source to the destination.
+    If the file is missing, it prompts the user to retry or exit.
 
-        else:
-            ranges[section] = get_page_range(section, total_pages, withCover)
+    Args:
+        source_folder (Path): The directory containing the raw PDF and JPG.
+        destination_folder (Path): The central archival folder for covers.
 
-    extract_pages(file_path, ranges, folderName)
+    Returns:
+        Optional[str]: The extracted DanaCode string if successful;
+                      None if the user chooses to cancel.
+    """
 
-    return thereIsEnglish
+    while True:
+        # Attempt the silent logic operation
+        dana_code = move_cover_image(source_folder, destination_folder)
 
+        if dana_code:
+            # Note: No emojis used in professional output
+            print_green(f"Successfully processed DanaCode: {dana_code}")
+            return dana_code
 
-def delete_file(filePath, fileName):
-    print("delete file")
-    try:
-        if os.path.exists(filePath):
-            os.remove(filePath)
-            print_green(f"{fileName} deleted successfully.\n")
-        else:
-            print_red(f"\nThe file {filePath} does not exist.")
-    except Exception as e:
-        print_red(f"\nError deleting the file: {e}")
+        # Error handling with user feedback
+        print_red(f"Error: No numeric JPG found in {source_folder.name}")
 
-def extract_pages(finFileName, input_pdf_path, folderName):
-    if yesOrNo("\nDo you want to extract PDFs for con, pre, chap and eng? (y/n): "):
-        thereIsEnglish = extractSectionPages(os.path.join(folderName, finFileName), folderName, True)
-
-        if thereIsEnglish == 'y':
-            engFile = os.path.join(os.path.dirname(input_pdf_path), f"{folderName}.pdf")
-            reverse_pages(engFile)
-            delete_file(engFile, 'temp english file')
+        if not yes_or_no("Would you like to try again? (y/n): "):
+            print("Operation cancelled by user.")
+            return None
 
 def process_pdf():
-    input_pdf_path = get_input_pdf()
+    # 1. Setup paths
+    input_pdf_path = get_input_pdf_path()
+    source_folder = input_pdf_path.parent # get the source folder of the PDF file
+    folder_name = str(source_folder.name)
 
-    source_folder = os.path.dirname(input_pdf_path) # get the source folder of the PDF file
-    folder_name = os.path.basename(source_folder)
+    # 2. Process Cover and Excel
+    danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
 
-    updateExcelCellAndOpenExcel(moveJpgFile(source_folder, COVERS_FOLDER), folder_name)
+    if not danacode:
+        print_red("Process halted: Cover error.")
 
-    fin_file_name = os.path.join(os.path.dirname(input_pdf_path), f"{folder_name}_fin.pdf")
+    if not run_excel_update_workflow(danacode, folder_name):
+        print_red("Process halted: Excel error.")
+        return
 
-    extract_pages(fin_file_name, input_pdf_path, folder_name)
+        # 3. Handle PDF Extraction
+    if yes_or_no("Do you want to extract section PDFs? "):
+        fin_file_path = source_folder / f"{folder_name}_fin.pdf"
+
+        try:
+            shutil.copy2(input_pdf_path, fin_file_path)
+            print_green(f"Created working file: {fin_file_path.name}")
+        except Exception as e:
+            print_red(f"Failed to create fin file: {e}")
+            return
+
+        total_pages = get_pdf_page_count(fin_file_path)
+
+        if total_pages:
+            ranges = {}
+            for sec in ['con', 'pre', 'chap']:
+                ranges[sec] = get_page_range_ui(sec, total_pages)
+
+            # Extract English if it exists
+            if yes_or_no("Does the book have an English section? "):
+                ranges['english'] = get_page_range_ui('english', total_pages)
+
+                extract_pdf_sections(folder_name, fin_file_path, ranges, source_folder)
+
+                if handle_english_section_logic(source_folder, folder_name):
+                    print_green(f"Successfully processed English section for {folder_name}")
+
+            else:
+                extract_pdf_sections(fin_file_path, ranges, source_folder)
 
 if __name__ == "__main__":
     process_pdf()

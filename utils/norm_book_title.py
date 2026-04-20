@@ -10,6 +10,7 @@ def is_valid_english_title(title: str) -> bool:
     Validates that the title contains English alphanumeric characters.
     Allows specific punctuation: - ' " , . ? !
     """
+
     # Check if empty or only whitespace
     if not title.strip():
         return True  # Handled as a bypass elsewhere
@@ -26,6 +27,7 @@ def to_title_case(title: str) -> str:
     """
     Converts an English string to Title Case while keeping prepositions lowercase.
     """
+
     clean_title = title.replace('-', ' ').strip()
     words = clean_title.split()
 
@@ -41,6 +43,7 @@ def to_snake_case(title: str) -> str:
     """
     Converts an English string to web-safe snake_case for folder naming.
     """
+
     # Remove all non-alphanumeric (except spaces/hyphens for temporary splitting)
     text = re.sub(r'[^a-zA-Z0-9\s-]', '', title)
     text = re.sub(r'[\s-]+', '_', text)
@@ -51,6 +54,7 @@ def get_book_metadata(raw_title: str) -> dict:
     """
     Orchestrates conversion. Includes validation for English alphanumeric content.
     """
+
     if not raw_title.strip():
         logging.info("Bypass triggered: Empty input provided.")
         return {"display_title": "", "folder_name": ""}
@@ -69,6 +73,7 @@ def normalize_book_title() -> None:
     """
     CLI wrapper that persists until a valid English title or empty bypass is provided.
     """
+
     prompt = "Leave empty if title is already correct.\nEnter book title in English: "
 
     while True:
