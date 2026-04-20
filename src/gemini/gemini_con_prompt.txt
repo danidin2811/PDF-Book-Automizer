@@ -1,0 +1,18 @@
+Subject: Transcription of Hebrew/Multilingual Table of Contents to CSV
+
+Core Task: Transcribe the Table of Contents from the attached PDF into a structured CSV file. Use your Python tool to generate a downloadable .csv file.
+
+Output Format: A CSV file with exactly three columns:
+1. level: 1 for main sections, 2 for chapters, 3 for sub-points.
+2. title: The full heading text. 
+    - Keep Right-to-Left (RTL) order.
+    - Preserve all Greek letters (-ους) and phonetic symbols (ḏ, ḥ, ṣ).
+    - Remove the leader dots/bullets between the title and page number.
+3. page_number: The associated digit(s).
+
+Technical Specifications (CRITICAL):
+- File Generation: Do not print text in the chat. Use Python to create a downloadable file.
+- Encoding: Save the file using 'utf-8-sig' (UTF-8 with BOM). This ensures Hebrew and Greek characters display correctly in Microsoft Excel.
+- Hierarchy: Determine the level based on indentation, font size, and the numbering system (Roman vs. Arabic).
+
+Example Row: 2,"16. סיומת -ους יוונית משקפת -on",391

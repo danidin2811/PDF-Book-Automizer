@@ -1,13 +1,23 @@
-from src.constants import COVERS_FOLDER
 from pathlib import Path
 from typing import Optional
 import shutil
 
-from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
+from src.constants import COVERS_FOLDER
 from src.logic.excel_tools import run_excel_update_workflow
+from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import print_green, print_red, yes_or_no, get_page_range_ui
 
+def wait_for_ready_signal():
+    """Confirms system requirements are met before starting."""
+    checklist = (
+        "\nPRE-PROCESSING CHECKLIST:\n"
+        "1. Close the Excel tracking table\n"
+        "2. Ensure the numeric JPG cover is in the source folder\n"
+        "3. Ensure the JPG filename matches the DanaCode\n\n"
+        "Press Enter to start the workflow: "
+    )
+    input(checklist)
 
 def get_input_pdf_path() -> Path:
     """
@@ -77,14 +87,14 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
             print("Operation cancelled by user.")
             return None
 
-def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_name: str) -> bool:
+def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_name: str) -> tuple[bool, Optional[Path]]:
     """
     Handles the physical file copying and section extraction logic.
     Returns True to continue, False to stop the main process.
     """
 
     if not yes_or_no("Do you want to extract section PDFs? "):
-        return True
+        return True, None
 
     fin_file_path = source_folder / f"{folder_name}_fin.pdf"
     book_title = source_folder.name
@@ -94,11 +104,11 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
         print_green(f"Created working file: {fin_file_path.name}")
     except Exception as e:
         print_red(f"Failed to create fin file: {e}")
-        return False  # This replaces the 'interrupting' return
+        return False, None  # This replaces the 'interrupting' return
 
     total_pages = get_pdf_page_count(fin_file_path)
     if not total_pages:
-        return False
+        return False, None
 
     ranges = {}
     for sec in ['con', 'pre', 'chap']:
@@ -115,25 +125,37 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
     else:
         extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
 
-    return True
+    con_file_path = source_folder / f"{book_title}_con.pdf"
+
+    if con_file_path.exists():
+        print_green(f"Path captured: {con_file_path}")
+
+    return True, con_file_path
 
 def process_pdf():
+    wait_for_ready_signal()
+
     input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
 
     # 2. Process Cover and Excel
-    # danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
-    #
-    # if not danacode:
-    #     print_red("Process halted: Cover error.")
-    #
-    # if not run_excel_update_workflow(danacode, folder_name):
-    #     print_red("Process halted: Excel error.")
-    #     return
+    danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
+
+    if not danacode:
+        print_red("Process halted: Cover error.")
+
+    if not run_excel_update_workflow(danacode, folder_name):
+        print_red("Process halted: Excel error.")
+        return
 
     # 3. Handle PDF Extraction
-    if not run_extraction_workflow(input_pdf_path, source_folder, folder_name):
+    success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name)
+    if not success:
         print_red("Extraction workflow failed.")
         return
+
+    if con_file_path:
+        print_green(f"Ready for transcription: {con_file_path.name}")
+
 
 
 if __name__ == "__main__":
