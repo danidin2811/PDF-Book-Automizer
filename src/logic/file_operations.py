@@ -4,6 +4,21 @@ import shutil
 from pathlib import Path
 
 
+def validate_csv_path(path_str: str) -> tuple[bool, str]:
+    """Validates if a string is a valid path to an existing CSV."""
+
+    # Strip both types of quotes that might come from drag-and-drop
+    clean_path = path_str.strip('"').strip("'")
+    path = Path(clean_path)
+
+    if not path.exists():
+        return False, f"CSV file path {path} does not exist."
+    if path.suffix.lower() != '.csv':
+        return False, f"File {path} is not a CSV."
+
+    return True, str(path)
+
+
 def validate_pdf_path(path_str: str) -> tuple[bool, str]:
     """Validates if a string is a valid path to an existing PDF."""
 

@@ -1,13 +1,18 @@
+import os
 from pathlib import Path
 from typing import Optional
 import shutil
 
 from src.gemini.gemini_prompt import handle_gemini_toc_transcription
 from src.constants import COVERS_FOLDER
-from src.logic.excel_tools import run_excel_update_workflow
+from src.logic.excel_tools import run_excel_update_workflow, process_toc_extraction
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import *
+from utils.input_output_tools import wait_for_ready_signal
+from src.logic.file_operations import validate_csv_path
+from src.logic.excel_tools import get_new_toc_entries
+from src.logic.pdf_tools import append_to_existing_toc
 
 def get_input_pdf_path() -> Path:
     """
@@ -122,6 +127,21 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
 
     return True, con_file_path
 
+def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder):
+    print_green(f"Ready for transcription: {con_file_path.name}")
+    handle_gemini_toc_transcription(input_pdf_path, con_file_path)
+    csv_path = os.path.join(source_folder, "toc.csv")
+    output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
+    toc_entries = process_toc_extraction(csv_path)
+
+    if toc_entries:
+        # Only proceed if we actually got data
+        append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries)
+        print_green("Toc has been successfully added to the PDF file")
+
+    else:
+        print("Bookmark appending cancelled due to missing or invalid TOC data.")
+
 def process_pdf():
     checklist = (
         "\nPRE-PROCESSING CHECKLIST:\n"
@@ -129,7 +149,7 @@ def process_pdf():
         "2. Ensure the numeric JPG cover is in the source folder\n"
         "3. Ensure the JPG filename matches the DanaCode\n\n"
     )
-    
+
     wait_for_ready_signal(checklist)
 
     input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
@@ -151,8 +171,7 @@ def process_pdf():
         return
 
     if con_file_path:
-        print_green(f"Ready for transcription: {con_file_path.name}")
-        handle_gemini_toc_transcription(input_pdf_path, con_file_path)
+        add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder)
 
 
 if __name__ == "__main__":

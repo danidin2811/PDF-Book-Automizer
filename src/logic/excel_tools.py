@@ -7,9 +7,105 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH
+from src.logic.file_operations import validate_csv_path
 from utils.input_output_tools import print_red
+import csv
+
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+
+def get_new_toc_entries(csv_path):
+    """Extracts TOC data with detailed error logging."""
+    new_entries = []
+
+    if not os.path.exists(csv_path):
+        print(f"DEBUG: File not found at {csv_path}")
+        return []
+
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
+        # Use DictReader to handle header variations
+        reader = csv.DictReader(f)
+
+        for line_num, row in enumerate(reader, start=2):  # Header is line 1
+            try:
+                # 1. Level Check
+                level_raw = row.get("level", "").strip()
+                if not level_raw:
+                    raise ValueError("Missing 'level' field")
+                level = int(level_raw)
+
+                # 2. Title Check
+                title = row.get("title", "").strip()
+                if not title:
+                    raise ValueError("Missing 'title' field")
+
+                # 3. Page Number Check (Handling both 'page_number' and 'page number')
+                page_val = row.get("page_number") or row.get("page number")
+
+                # Allow empty page numbers for level 1 (sections/parts)
+                if not page_val or not page_val.strip():
+                    if level == 1:
+                        page = 0
+                    else:
+                        raise ValueError(f"Missing page number for level {level} entry")
+                else:
+                    # Clean the page string in case there are non-digit characters
+                    clean_page = ''.join(c for c in page_val if c.isdigit())
+                    if not clean_page:
+                        raise ValueError(f"Invalid page format: '{page_val}'")
+                    page = int(clean_page)
+
+                new_entries.append({
+                    "level": level,
+                    "title": title,
+                    "page": page
+                })
+
+            except ValueError as ve:
+                print(f"Row {line_num} Data Error: {ve} | Content: {row}")
+            except Exception as e:
+                print(f"Row {line_num} Unexpected Error: {e}")
+
+    return new_entries
+
+
+def process_toc_extraction(initial_csv_path):
+    current_path = initial_csv_path
+
+    while True:
+        is_valid, result_or_error = validate_csv_path(current_path)
+
+        if not is_valid:
+            print(f"\n[!] Path Error: {result_or_error}")
+            current_path = input("Please enter the correct path to the .csv file: ")
+            continue  # Go back to start of loop to check the new path
+
+        # Step 2: Try to extract entries
+        # result_or_error is now the cleaned path string
+        entries = get_new_toc_entries(result_or_error)
+
+        if entries:
+            print("-" * 30)
+            print(f"✅ Success! Loaded {len(entries)} entries.")
+            print("-" * 30)
+            return entries
+
+        # Step 3: Handle empty/invalid file content
+        print("\n" + "!" * 40)
+        print("[!] CRITICAL: No valid entries found in the file.")
+        print(f"File Path: {result_or_error}")
+        print("Ensure headers are exactly: level, title, page_number")
+        print("!" * 40 + "\n")
+
+        choice = input("Would you like to try again? (y = retry file, p = change path, n = exit): ").lower()
+
+        if choice == 'p':
+            current_path = input("Enter new file path: ")
+        elif choice != 'y':
+            print("Exiting TOC extraction.")
+            return None
+
 
 
 def get_lock_status(filepath: Path) -> str:

@@ -34,11 +34,6 @@ def get_page_range_ui(section: str, total_pages: int):
 
 def wait_for_ready_signal(prompt):
     """Confirms system requirements are met before starting."""
-    checklist = (
-        "\nPRE-PROCESSING CHECKLIST:\n"
-        "1. Close the Excel tracking table\n"
-        "2. Ensure the numeric JPG cover is in the source folder\n"
-        "3. Ensure the JPG filename matches the DanaCode\n\n"
-    )
+
     print(prompt)
     input("Press Enter to continue: ")

@@ -4,6 +4,51 @@ from typing import Optional, Dict, Tuple
 from PyPDF2 import PdfReader, PdfWriter
 import os
 
+def append_to_existing_toc(input_pdf_path, output_pdf_path, new_toc_entries):
+    """Clones existing PDF bookmarks and appends new ones from the CSV entries."""
+    reader = PdfReader(input_pdf_path)
+    writer = PdfWriter()
+    writer.append_pages_from_reader(reader)
+
+    def copy_outlines(outlines, parent=None):
+        last_added = None
+        for item in outlines:
+            if isinstance(item, list):
+                copy_outlines(item, parent=last_added)
+            else:
+                last_added = writer.add_outline_item(
+                    title=item.title,
+                    page_number=reader.get_destination_page_number(item),
+                    parent=parent
+                )
+
+    if reader.outline:
+        copy_outlines(reader.outline)
+
+    bookmark_stack = {}
+    for entry in new_toc_entries:
+        level = entry["level"]
+        title = entry["title"]
+        page_index = entry["page"] - 1
+
+        if page_index < 0 or page_index >= len(reader.pages):
+            continue
+
+        parent = bookmark_stack.get(level - 1)
+        bookmark = writer.add_outline_item(
+            title=title,
+            page_number=page_index,
+            parent=parent,
+        )
+
+        bookmark_stack[level] = bookmark
+        keys_to_delete = [l for l in bookmark_stack if l > level]
+        for l in keys_to_delete:
+            del bookmark_stack[l]
+
+    with open(output_pdf_path, "wb") as f:
+        writer.write(f)
+
 
 def reverse_pdf_pages(input_path: Path) -> bool:
     """

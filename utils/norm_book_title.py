@@ -80,10 +80,10 @@ def normalize_book_title() -> Optional[dict]:
     while True:
         user_input = input(prompt).strip()
 
-        # 1. Handle Bypass (Empty Input)
+        # 1. Handle Bypass
         if not user_input:
             print("Bypassing normalization. No changes made.")
-            break
+            return None  # Return None explicitly so the caller knows it was bypassed
 
         # 2. Process and Validate
         metadata = get_book_metadata(user_input)
@@ -93,12 +93,9 @@ def normalize_book_title() -> Optional[dict]:
             print(f"Display Title: {metadata['display_title']}")
             print(f"Folder Name:  {metadata['folder_name']}")
             print("-" * 30)
-            break  # Exit loop after successful processing
+            return metadata  # RETURN the dictionary here, don't just break
 
-        # 3. Handle Invalid Input (Non-English, Hebrew, or symbols only)
-        print("Invalid input detected.\nPlease ensure the title is in English and contains alphanumeric characters. Try again.")
-
-        return metadata
+        print("Invalid input detected. Please use English alphanumeric characters.")
 
 
 if __name__ == "__main__":
