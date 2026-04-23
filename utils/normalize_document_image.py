@@ -50,27 +50,49 @@ def normalize_document_image(image_path: Path, output_path: Path, target_h_in: f
     matrix = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
     rotated = cv2.warpAffine(img, matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
-    # 2. Crop to Content
+    # 2. Advanced Crop to Content
+    h_c, w_c = rotated.shape[:2]
     new_gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(new_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    if not contours:
-        return False
+    # Blur to remove fine noise
+    blurred = cv2.GaussianBlur(new_gray, (7, 7), 0)
 
-    c = max(contours, key=cv2.contourArea)
-    x, y, w_c, h_c = cv2.boundingRect(c)
-    cropped = rotated[y:y + h_c, x:x + w_c]
+    # Use Thresholding first to find the general shape
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Morphological Closing: This "welds" the textured bark into a solid rectangle
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
+    # Find contours on the "closed" solid block
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        c = max(contours, key=cv2.contourArea)
+
+        # Check if the area is reasonable (at least 20% of image)
+        if cv2.contourArea(c) > (rotated.shape[0] * rotated.shape[1] * 0.2):
+            x, y, w_c, h_c = cv2.boundingRect(c)
+            # Add a small 5-pixel padding so we don't cut the very edge of the cover
+            x, y = max(0, x - 5), max(0, y - 5)
+            w_c, h_c = min(rotated.shape[1] - x, w_c + 10), min(rotated.shape[0] - y, h_c + 10)
+            cropped = rotated[y:y + h_c, x:x + w_c]
+        else:
+            print("Warning: Detected area too small. Using full image.")
+            cropped = rotated
+            h_c, w_c = rotated.shape[:2]
+    else:
+        print("Warning: No boundary detected. Using full image.")
+        cropped = rotated
+        h_c, w_c = rotated.shape[:2]
 
     # 3. Handle Scaling and DPI logic
-    target_h_px = int(target_h_in * dpi)
+    target_h_px = int(target_h_in * 300)
 
     if target_w_in:
-        # Exact Width and Height requested
-        target_w_px = int(target_w_in * dpi)
+        target_w_px = int(target_w_in * 300)
         final_img = resize_and_crop(cropped, target_w_px, target_h_px)
     else:
-        # Proportional scaling based on Height only
         aspect_ratio = w_c / h_c
         target_w_px = int(target_h_px * aspect_ratio)
         final_img = cv2.resize(cropped, (target_w_px, target_h_px), interpolation=cv2.INTER_LANCZOS4)
@@ -95,6 +117,7 @@ def pdf_page_to_normalized_image(pdf_path: Path):
         print("Invalid number entered.")
         return
 
+    print("Cropping, please wait...")
     doc = fitz.open(pdf_path)
     pix = doc.load_page(0).get_pixmap(dpi=300)
     temp_img = pdf_path.with_suffix(".png")
