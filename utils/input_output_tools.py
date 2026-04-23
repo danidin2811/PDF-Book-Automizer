@@ -37,3 +37,26 @@ def wait_for_ready_signal(prompt):
 
     print(prompt)
     input("Press Enter to continue: ")
+
+
+def ask_offset():
+    """
+    Prompts the user to specify an offset for book page numbering.
+    Returns:
+        int: The offset entered by the user. Always an integer value (can be positive, negative, or zero).
+    """
+    while True:
+        try:
+            offset = int(input(
+                "\nIs there an offset in the book's pages?\n"
+                "Please enter the amount of offset pages as a number (positive, negative, or 0 for none): "
+            ).strip())
+
+            print(f"You entered offset: {offset}")
+            confirm = input("Is this correct? (y/n): ").strip().lower()
+            if confirm == 'y':
+                return offset
+            else:
+                print("Re-enter the offset.")
+        except ValueError:
+            print_red("\nInvalid input. Please enter a valid integer.\n")

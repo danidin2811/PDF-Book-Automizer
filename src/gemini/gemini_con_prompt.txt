@@ -1,18 +1,32 @@
-Subject: Transcription of Hebrew/Multilingual Table of Contents to CSV
+Core Task: Transcribe the Table of Contents from the attached PDF into a structured CSV file.
 
-Core Task: Transcribe the Table of Contents from the attached PDF into a structured CSV file. Use your Python tool to generate a downloadable .csv file.
+Technical Requirements:
 
-Output Format: A CSV file with exactly three columns:
-1. level: 1 for main sections, 2 for chapters, 3 for sub-points.
-2. title: The full heading text. 
-    - Keep Right-to-Left (RTL) order.
-    - Preserve all Greek letters (-ους) and phonetic symbols (ḏ, ḥ, ṣ).
-    - Remove the leader dots/bullets between the title and page number.
-3. page_number: The associated digit(s).
+    Tool Use: You must use the Python Data Analysis tool to create and save the file.
 
-Technical Specifications (CRITICAL):
-- File Generation: Do not print text in the chat. Use Python to create a downloadable file.
-- Encoding: Save the file using 'utf-8-sig' (UTF-8 with BOM). This ensures Hebrew and Greek characters display correctly in Microsoft Excel.
-- Hierarchy: Determine the level based on indentation, font size, and the numbering system (Roman vs. Arabic).
+    Encoding: The file must be saved using the 'utf-8-sig' encoding (UTF-8 with BOM) to ensure Hebrew, phonetic symbols, and Greek characters are readable in Microsoft Excel.
 
-Example Row: 2,"16. סיומת -ους יוונית משקפת -on",391
+    Download Link: Provide the standard system-generated download tag so the file can be saved to my device.
+
+CSV Structure (Exactly 3 Columns):
+
+    level: 1 for main sections/parts, 2 for chapters/articles, 3 for sub-points.
+
+    title: The full heading text.
+
+        Keep Right-to-Left (RTL) order.
+
+        Preserve all Greek letters and phonetic symbols (e.g., d, h, s with diacritics).
+
+        Remove the leader dots or bullets between the title and page number.
+
+        Format as: "Article Title — Author Name" (if applicable).
+
+    page_number: The associated digits.
+
+Page Number Calculation:
+The document has a page numbering offset of {offset}.
+You must add this offset to every page number you find in the Table of Contents before writing it to the CSV.
+Formula: (Page number printed in PDF) + ({offset}) = (Value for CSV page_number column).
+
+Hierarchy: Determine the level based on indentation, font size, and the numbering system used in the document. Ensure all entries from the entire document are included.

@@ -10,9 +10,9 @@ from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import *
 from utils.input_output_tools import wait_for_ready_signal
-from src.logic.file_operations import validate_csv_path
-from src.logic.excel_tools import get_new_toc_entries
 from src.logic.pdf_tools import append_to_existing_toc
+from utils.open_pdfs_side_by_side import open_pdfs_side_by_side_acrobat
+
 
 def get_input_pdf_path() -> Path:
     """
@@ -173,6 +173,9 @@ def process_pdf():
     if con_file_path:
         add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder)
 
+    fin_file_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
+
+    open_pdfs_side_by_side_acrobat(str(con_file_path), str(fin_file_path))
 
 if __name__ == "__main__":
     process_pdf()

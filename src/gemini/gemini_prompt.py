@@ -4,9 +4,10 @@ from utils.input_output_tools import print_red
 def load_gemini_prompt() -> str:
     """Reads the transcription prompt from the resources folder."""
 
-    prompt_path = r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\python\PDF-Book-Automizer\src\gemini\gemini_con_prompt.txt"
+    from src.constants import PROMPT_PATH
 
-    print(prompt_path)
+    prompt_path = PROMPT_PATH
+
     try:
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -23,10 +24,12 @@ def handle_gemini_toc_transcription(source_folder, con_file_path):
     import pyperclip
     import os
 
-    from utils.input_output_tools import wait_for_ready_signal
+    from utils.input_output_tools import wait_for_ready_signal, ask_offset
 
-    gemini_prompt = load_gemini_prompt()
-    pyperclip.copy(gemini_prompt) # Copy prompt to clipboard for easy pasting
+    offset = ask_offset()
+    raw_prompt = load_gemini_prompt()
+    formatted_prompt = raw_prompt.format(offset=offset)
+    pyperclip.copy(formatted_prompt) # Copy prompt to clipboard for easy pasting
 
     print(f"Prompt copied to clipboard. Opening Gemini...")
     print(f"File to upload: {con_file_path}")
@@ -50,3 +53,7 @@ def handle_gemini_toc_transcription(source_folder, con_file_path):
 
     wait_for_ready_signal(instructions)
 
+if __name__ == "__main__":
+    source_folder = r"C:\Users\system1\Desktop\קבצי ספרים בעבודה\studies_in_the_history_of_eretz_israel"
+    con_file_path = r"C:\Users\system1\Desktop\קבצי ספרים בעבודה\studies_in_the_history_of_eretz_israel\studies_in_the_history_of_eretz_israel_con.pdf"
+    handle_gemini_toc_transcription(source_folder,con_file_path)
