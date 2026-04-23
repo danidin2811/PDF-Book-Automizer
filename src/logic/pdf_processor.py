@@ -177,5 +177,7 @@ def process_pdf():
 
     open_pdfs_side_by_side_acrobat(str(con_file_path), str(fin_file_path))
 
+    return source_folder
+
 if __name__ == "__main__":
     process_pdf()

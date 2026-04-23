@@ -1,3 +1,4 @@
+from src.logic.system_tools import clean_up_folder_after_processing
 from utils.norm_book_title import normalize_book_title
 from logic.pdf_processor import process_pdf
 from utils.input_output_tools import wait_for_ready_signal
@@ -13,18 +14,27 @@ def main():
         print("Using existing folder name.")
 
     try:
-        process_pdf()
+        book_folder_path = process_pdf()
 
         wait_for_ready_signal(
             "The PDF file has been successfully processed and the TOC has been added.\n"
             "----------------------------------------------------------------------\n"
             "MANUAL INSPECTION REQUIRED:\n"
-            "1. Open the updated PDF.\n"
-            "2. Verify all levels and page numbers in the bookmarks tab.\n"
-            "3. Ensure 'toc.csv' matches the PDF structure.\n"
+            "Open the updated PDF and verify all levels, page numbers and titles in the bookmarks tab.\n"
             "----------------------------------------------------------------------\n"
-            "Once confirmed, press Enter to finish: "
         )
+
+        wait_for_ready_signal(
+            "MANUAL ACTION REQUIRED:\n"
+            "Great, you've finished inspecting the TOC, to proceed, please add front and back covers as needed.\n"
+        )
+
+        wait_for_ready_signal(
+            "MANUAL ACTION REQUIRED:\n"
+            "Before proceeding, make sure to remove 'Blank Page' bookmarks after adding the front and back covers.\n"
+        )
+
+        clean_up_folder_after_processing(book_folder_path)
 
     except Exception as e:
         print(f"An error occurred during processing: {e}")

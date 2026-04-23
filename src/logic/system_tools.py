@@ -37,3 +37,11 @@ def delete_file(file_path: Path) -> bool:
     except Exception as e:
         logging.error(f"Error deleting file: {e}")
         return False
+
+def clean_up_folder_after_processing(folder_path):
+    from utils.input_output_tools import wait_for_ready_signal
+
+    wait_for_ready_signal(
+        "MANUAL ACTION REQUIRED:\n"
+        "Please close all open files of the book.\n"
+    )
