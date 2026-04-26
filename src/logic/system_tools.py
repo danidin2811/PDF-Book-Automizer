@@ -89,8 +89,8 @@ def clean_up_folder_after_processing(folder_path: str):
         dest_path = Path(READY_TO_UPLOAD_TO_AMAZON_FOLDER) / folder.name
         shutil.move(str(folder), str(dest_path))
         print_green(f"Successfully archived folder to: {dest_path}")
-
-        return dest_path
+        flip_path = dest_path / "flip"
+        return flip_path
 
     except Exception as e:
         print_red(f"Failed to move entire folder to archive: {e}")
