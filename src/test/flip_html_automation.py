@@ -1,6 +1,8 @@
 import os
 import time
 from pathlib import Path
+
+from openpyxl.utils.protection import hash_password
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -141,11 +143,13 @@ def set_book_password(book_title, wait, driver):
         print(f"  [ERROR] Failed to click footer Confirm: {e}")
 
 
-def upload_fin_pdf(driver, pdf_folder_path, wait):
+def upload_fin_pdf(pdf_folder_path):
     import pyperclip
     from utils.input_output_tools import wait_for_ready_signal
 
-    pyperclip.copy(pdf_folder_path)
+    book_title = Path(pdf_folder_path).parent.name
+    fin_pdf_path = Path(pdf_folder_path) / f"{book_title}_fin.pdf"
+    pyperclip.copy(fin_pdf_path)
 
     try:
         print("[STEP] Triggering the Windows Open dialog...")
@@ -154,9 +158,104 @@ def upload_fin_pdf(driver, pdf_folder_path, wait):
                               "2. Press Ctrl+V in the File name field at the bottom to paste the path"
                               "3. Press Enter to start the file upload\n")
 
+        return True
+
     except Exception as e:
         print(f"  [ERROR] Failed to trigger dialog: {e}")
         return False
+
+
+def apply_design_settings(driver, wait, has_password):
+    from utils.input_output_tools import yes_or_no
+
+    # 1. Change the string in the input field
+    # Assuming this is a title or alias field appearing after conversion
+    try:
+        print("[STEP] Updating text field...")
+        input_field = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "input.h5_input")))
+        input_field.clear()
+        input_field.send_keys("Updated Book Title")  # Replace with your variable
+    except Exception as e:
+        print(f"  [ERROR] Could not update input field: {e}")
+
+    # 2. Click 'Customize' in the left menu
+    try:
+        print("[STEP] Clicking 'Customize' menu...")
+        customize_btn = wait.until(EC.element_to_be_clickable((By.ID, "left_menu_customize")))
+        driver.execute_script("arguments[0].click();", customize_btn)
+    except Exception as e:
+        print(f"  [ERROR] Customize menu failed: {e}")
+
+    # 3. Click 'My Designs'
+    try:
+        print("[STEP] Opening 'My Designs'...")
+        my_designs_xpath = "//li[@title='My Designs']//div[contains(@class, 'h5_setting_nav_button')]"
+        my_designs_btn = wait.until(EC.element_to_be_clickable((By.XPATH, my_designs_xpath)))
+        driver.execute_script("arguments[0].click();", my_designs_btn)
+        time.sleep(2)  # Wait for templates to render
+    except Exception as e:
+        print(f"  [ERROR] My Designs failed: {e}")
+
+    # 4. Handle Hebrew vs English Logic
+    is_hebrew = yes_or_no("Is the book in Hebrew?")
+
+    # Identify target design based on text label in 'itemName'
+    if is_hebrew and has_password:
+        target_label = "לא להורדה ולשיתוף"
+    elif not is_hebrew and has_password:
+        target_label = "English design"
+    else:
+        # Assuming "פתוח לשיתוף" is the 'no password' default
+        target_label = "פתוח לשיתוף"
+
+    print(f"[STEP] Applying design template: {target_label}")
+
+    try:
+        # Locate the design container that contains the specific text label
+        container_xpath = f"//div[contains(@class, 'designItem')][.//div[text()='{target_label}']]"
+        design_container = wait.until(EC.presence_of_element_located((By.XPATH, container_xpath)))
+
+        # Hover is often required to make the 'Apply' button appear in the DOM
+        actions = ActionChains(driver)
+        actions.move_to_element(design_container).perform()
+
+        # Find the 'Apply' button inside that specific container
+        apply_btn = design_container.find_element(By.XPATH, ".//div[contains(@class, 'apply_btn')]")
+        driver.execute_script("arguments[0].click();", apply_btn)
+        print(f"  [DEBUG] '{target_label}' applied successfully.")
+
+    except Exception as e:
+        print(f"  [ERROR] Failed to apply template '{target_label}': {e}")
+
+def wait_for_conversion_and_continue(driver, wait, has_password, long_timeout=600):
+    print(f"[STEP] Waiting for conversion to complete (Timeout: {long_timeout}s)...")
+
+    # Create a dedicated wait object for the conversion process
+    conversion_wait = WebDriverWait(driver, long_timeout)
+
+    try:
+        # The URL changes to 'bookinfo' only after conversion hits 100%
+        conversion_wait.until(EC.url_contains("bookinfo"))
+        print(f"  [DEBUG] Conversion finished. New URL: {driver.current_url}")
+        apply_design_settings(driver,wait,has_password)
+
+    except TimeoutException:
+        print(f"  [ERROR] Conversion exceeded {long_timeout} seconds.")
+        return False
+
+    # 2. Allow the Editor UI (sidebar and preview) to fully load
+    time.sleep(5)
+
+    try:
+        print("[STEP] Navigating to 'Customize' settings...")
+        customize_xpath = "//div[contains(@class, 'menu-item')]//span[text()='Customize']"
+        customize_btn = conversion_wait.until(EC.element_to_be_clickable((By.XPATH, customize_xpath)))
+        driver.execute_script("arguments[0].click();", customize_btn)
+        print("  [DEBUG] Customize menu opened.")
+    except Exception as e:
+        print(f"  [ERROR] Could not click 'Customize': {e}")
+
+    return True
 
 def test_fliphtml5_with_profile(pdf_folder_path):
     chrome_options = Options()
@@ -205,14 +304,16 @@ def test_fliphtml5_with_profile(pdf_folder_path):
         print("[4] Book link customized.")
 
         from utils.input_output_tools import yes_or_no
-        # if yes_or_no("Does the book needs to be protected by password? "):
-        #     print("[5] Proceeding to set password...")
-            # set_book_password(book_title, wait, driver)
-        #
-        # else:
-        #     print("[5] Skipping password protection.")
+        has_password = yes_or_no("Does the book needs to be protected by password? ")
+        if has_password:
+            print("[5] Proceeding to set password...")
+            set_book_password(book_title, wait, driver)
 
-        upload_fin_pdf(driver, pdf_folder_path, wait)
+        else:
+            print("[5] Skipping password protection.")
+
+        if upload_fin_pdf(pdf_folder_path):
+            wait_for_conversion_and_continue(driver, wait, has_password)
 
     except Exception as e:
         # This will now print the full error name which is helpful
@@ -223,9 +324,28 @@ def test_fliphtml5_with_profile(pdf_folder_path):
         print("Process complete. Browser remains open due to 'detach' option.")
 
 
-if __name__ == "__main__":
-    # Your specific Institute network path
-    test_path = r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\קבצי ספרים מוכנים להעלאה לאמזון\studies_in_the_history_of_eretz_israel\flip"
+def run_isolated_test():
+    chrome_options = Options()
+    automation_data = os.path.join(os.environ['LOCALAPPDATA'], r"Google\Chrome\AutomationData")
+    chrome_options.add_argument(f"--user-data-dir={automation_data}")
+    chrome_options.add_experimental_option("detach", True)
 
-    print("Starting fused flip upload script...")
-    test_fliphtml5_with_profile(test_path)
+    driver = webdriver.Chrome(options=chrome_options)
+    wait = WebDriverWait(driver, 20)
+
+    try:
+        url = "https://fliphtml5.com/edit-book/38783277/design?lang=en"
+        driver.get(url)
+
+        print("Waiting for page to load. Please log in if prompted...")
+        time.sleep(5)
+
+        # Testing the function with has_password=True as an example
+        apply_design_settings(driver, wait, has_password=True)
+
+    except Exception as e:
+        print(f"Test Runner Error: {e}")
+
+
+if __name__ == "__main__":
+    run_isolated_test()
