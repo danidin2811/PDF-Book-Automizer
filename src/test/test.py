@@ -81,21 +81,82 @@ def customize_book_link(book_title, wait, driver):
             raise e
 
 
-def set_book_password(book_title, wait):
+def set_book_password(book_title, wait, driver):
     from src.logic.excel_tools import get_password_from_excel
-    print("[STEP] Opening 'Visibility Settings' dialog...")
-    wait.until(EC.element_to_be_clickable((By.XPATH, "//span[text()='Visibility Settings']"))).click()
+
+    print("[STEP] Opening settings popover for Visibility...")
+    try:
+        settings_toggle = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.convert-setting-btn")))
+        actions = ActionChains(driver)
+        actions.move_to_element(settings_toggle).click().perform()
+        wait.until(lambda d: d.find_element(By.CSS_SELECTOR, ".upload-setting-popper").is_displayed())
+    except Exception as e:
+        print(f"  [ERROR] Failed to open menu for Visibility: {e}")
+        raise
+
+    print("[STEP] Selecting 'Visibility Settings' from menu...")
+    visibility_btn_xpath = "//div[contains(@class, 'convert-setting-item')]//span[text()='Visibility Settings']"
+    visibility_btn = wait.until(EC.visibility_of_element_located((By.XPATH, visibility_btn_xpath)))
+    driver.execute_script("arguments[0].click();", visibility_btn)
 
     print(f"  [DEBUG] Fetching password for: {book_title}")
     password = get_password_from_excel(book_title)
 
     print("  [DEBUG] Selecting 'Private with Password' radio button...")
-    wait.until(EC.element_to_be_clickable((By.XPATH, "//label[.//span[text()='Private with Password']]"))).click()
+    # The radio button is inside an El-Radio component. We target the span containing the text.
+    radio_xpath = "//label[.//span[text()='Private with Password']]"
+    radio_btn = wait.until(EC.presence_of_element_located((By.XPATH, radio_xpath)))
+    driver.execute_script("arguments[0].click();", radio_btn)
 
-    wait_and_type(wait, "input.el-h5_input", password)
+    # Wait specifically for the input field to become visible after the click
+    print("  [DEBUG] Waiting for password input field...")
+    password_input = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "input.h5_input")))
+    password_input.clear()
+    password_input.send_keys(password)
 
-    print("[STEP] Clicking 'Confirm' for Visibility Settings...")
-    wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'footer_button')]//span[text()='Confirm']"))).click()
+    # FlipHTML5 often requires clicking 'Add' or pressing Enter for the password to register
+    try:
+        add_button = driver.find_element(By.XPATH, "//button[contains(., 'Add')]")
+        driver.execute_script("arguments[0].click();", add_button)
+        print("  [DEBUG] Clicked 'Add' button.")
+    except:
+        print("  [DEBUG] 'Add' button not found or not needed.")
+
+    time.sleep(1)
+
+    print("[STEP] Clicking the footer 'Confirm' button...")
+    try:
+        # 1. Wait for the element to be present
+        confirm_btn = wait.until(EC.presence_of_element_located(
+            (By.XPATH, "//div[contains(@class, 'footer_button')]//span[text()='Confirm']")))
+
+        # 2. Scroll to it just in case it's below the fold
+        driver.execute_script("arguments[0].scrollIntoView(true);", confirm_btn)
+
+        # 3. Force the click via JavaScript
+        driver.execute_script("arguments[0].click();", confirm_btn)
+        print("  [DEBUG] Confirm clicked successfully.")
+
+    except Exception as e:
+        print(f"  [ERROR] Failed to click footer Confirm: {e}")
+
+
+def upload_fin_pdf(driver, pdf_folder_path, wait):
+    import pyperclip
+    from utils.input_output_tools import wait_for_ready_signal
+
+    pyperclip.copy(pdf_folder_path)
+
+    try:
+        print("[STEP] Triggering the Windows Open dialog...")
+        wait_for_ready_signal("MANUAL ACTION REQUIRED:\n"
+                              "1. Click the 'Upload Files' button\n"
+                              "2. Press Ctrl+V in the File name field at the bottom to paste the path"
+                              "3. Press Enter to start the file upload\n")
+
+    except Exception as e:
+        print(f"  [ERROR] Failed to trigger dialog: {e}")
+        return False
 
 def test_fliphtml5_with_profile(pdf_folder_path):
     chrome_options = Options()
@@ -140,15 +201,18 @@ def test_fliphtml5_with_profile(pdf_folder_path):
         book_title = Path(pdf_folder_path).parent.name
         print(f"[3] Processing book title: {book_title}")
 
-        customize_book_link(book_title, wait, driver)
+        # customize_book_link(book_title, wait, driver)
         print("[4] Book link customized.")
 
         from utils.input_output_tools import yes_or_no
-        if yes_or_no("Does the book needs to be protected by password? "):
-            print("[5] Proceeding to set password...")
-            set_book_password(book_title, wait)
-        else:
-            print("[5] Skipping password protection.")
+        # if yes_or_no("Does the book needs to be protected by password? "):
+        #     print("[5] Proceeding to set password...")
+            # set_book_password(book_title, wait, driver)
+        #
+        # else:
+        #     print("[5] Skipping password protection.")
+
+        upload_fin_pdf(driver, pdf_folder_path, wait)
 
     except Exception as e:
         # This will now print the full error name which is helpful
