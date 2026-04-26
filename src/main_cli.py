@@ -34,7 +34,9 @@ def main():
             "Before proceeding, make sure to remove 'Blank Page' bookmarks after adding the front and back covers.\n"
         )
 
-        clean_up_folder_after_processing(book_folder_path)
+        folder_in_amazon = clean_up_folder_after_processing(book_folder_path)
+
+
 
     except Exception as e:
         print(f"An error occurred during processing: {e}")
