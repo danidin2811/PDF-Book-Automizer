@@ -219,3 +219,26 @@ def run_excel_update_workflow(dana_code: str, folder_name: str) -> bool:
         open_tracker_in_excel()
 
     return success
+
+
+def get_password_from_excel(book_title):
+    import pandas as pd
+
+    df = pd.read_excel(BOOK_TRACKER_EXCEL_FILE_PATH) # Load the Excel file
+
+    # Define your column headers
+    folder_col = "שם תיקייה בתיקיית העלאה לאמזון"
+    password_col = "סיסמא"
+
+    # Search for the row where the folder column matches book_title
+    # We use .strip() to avoid errors from accidental spaces in the Excel cells
+    result = df[df[folder_col].astype(str).str.strip() == book_title.strip()]
+
+    if not result.empty:
+        # Get the first match and return the password
+        password = result.iloc[0][password_col]
+        return str(password)
+
+    else:
+        print(f"Warning: No password found for {book_title} in Excel.")
+        return None
