@@ -2,14 +2,15 @@ import os
 import time
 from pathlib import Path
 
-from openpyxl.utils.protection import hash_password
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver import ActionChains
+
+from utils.input_output_tools import yes_or_no
 
 
 def wait_and_type(wait, selector, text, by=By.CSS_SELECTOR):
@@ -164,41 +165,56 @@ def upload_fin_pdf(pdf_folder_path):
         print(f"  [ERROR] Failed to trigger dialog: {e}")
         return False
 
-
-def apply_design_settings(driver, wait, has_password):
-    from utils.input_output_tools import yes_or_no
-
-    # 1. Change the string in the input field
-    # Assuming this is a title or alias field appearing after conversion
+def change_book_title(display_title, wait):
     try:
+        book_info_btn = wait.until(EC.visibility_of_element_located((By.ID, "left_menu_book_info")))
+        book_info_btn.click()
         print("[STEP] Updating text field...")
         input_field = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "input.h5_input")))
         input_field.clear()
-        input_field.send_keys("Updated Book Title")  # Replace with your variable
+        input_field.send_keys(display_title)
+        print("Successfully changed book title")
     except Exception as e:
         print(f"  [ERROR] Could not update input field: {e}")
 
-    # 2. Click 'Customize' in the left menu
+def apply_my_design(driver, has_password, wait):
     try:
-        print("[STEP] Clicking 'Customize' menu...")
-        customize_btn = wait.until(EC.element_to_be_clickable((By.ID, "left_menu_customize")))
-        driver.execute_script("arguments[0].click();", customize_btn)
-    except Exception as e:
-        print(f"  [ERROR] Customize menu failed: {e}")
+        # Outer container for visibility check
+        my_designs_li_xpath = "//li[@title='My Designs']"
+        # Specific clickable div inside the li
+        my_designs_btn_xpath = f"{my_designs_li_xpath}//div[contains(@class, 'h5_setting_nav_button')]"
 
-    # 3. Click 'My Designs'
-    try:
+        print("[STEP] Checking if 'My Designs' is already visible...")
+        existing_my_designs = driver.find_elements(By.XPATH, my_designs_li_xpath)
+
+        if not existing_my_designs or not existing_my_designs[0].is_displayed():
+            print("  [DEBUG] 'My Designs' not visible. Clicking 'Customize' menu...")
+            customize_btn = wait.until(EC.element_to_be_clickable((By.ID, "left_menu_customize")))
+            driver.execute_script("arguments[0].click();", customize_btn)
+            # Wait for the animation to finish so the button is interactable
+            wait.until(EC.visibility_of_element_located((By.XPATH, my_designs_btn_xpath)))
+            time.sleep(1)
+        else:
+            print("  [DEBUG] 'My Designs' is already visible, skipping 'Customize' click.")
+
         print("[STEP] Opening 'My Designs'...")
-        my_designs_xpath = "//li[@title='My Designs']//div[contains(@class, 'h5_setting_nav_button')]"
-        my_designs_btn = wait.until(EC.element_to_be_clickable((By.XPATH, my_designs_xpath)))
-        driver.execute_script("arguments[0].click();", my_designs_btn)
-        time.sleep(2)  # Wait for templates to render
+        # CRITICAL CHANGE: Target the div, not the li
+        my_designs_btn = wait.until(EC.element_to_be_clickable((By.XPATH, my_designs_btn_xpath)))
+
+        # Try a standard click first, fallback to JS if it's being stubborn
+        try:
+            my_designs_btn.click()
+        except:
+            driver.execute_script("arguments[0].click();", my_designs_btn)
+
+        # Wait for the templates panel to actually slide in
+        time.sleep(3)
+
     except Exception as e:
-        print(f"  [ERROR] My Designs failed: {e}")
+        print(f"  [ERROR] Failed to navigate to My Designs: {e}")
 
     # 4. Handle Hebrew vs English Logic
-    is_hebrew = yes_or_no("Is the book in Hebrew?")
-
+    is_hebrew = yes_or_no("Is the book in Hebrew? ")
     # Identify target design based on text label in 'itemName'
     if is_hebrew and has_password:
         target_label = "לא להורדה ולשיתוף"
@@ -207,9 +223,7 @@ def apply_design_settings(driver, wait, has_password):
     else:
         # Assuming "פתוח לשיתוף" is the 'no password' default
         target_label = "פתוח לשיתוף"
-
     print(f"[STEP] Applying design template: {target_label}")
-
     try:
         # Locate the design container that contains the specific text label
         container_xpath = f"//div[contains(@class, 'designItem')][.//div[text()='{target_label}']]"
@@ -224,10 +238,33 @@ def apply_design_settings(driver, wait, has_password):
         driver.execute_script("arguments[0].click();", apply_btn)
         print(f"  [DEBUG] '{target_label}' applied successfully.")
 
+        try:
+            print("[STEP] Confirming design application in popup...")
+
+            # 1. Wait for the lightbox container to be visible
+            wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "light_box_con")))
+
+            # 2. Locate the specific 'Confirm' button
+            # We target the div that has both 'lightbox_button' and 'lightbox_button_confirm' classes
+            confirm_xpath = "//div[contains(@class, 'lightbox_button_confirm')][span[text()='Apply']]"
+            confirm_btn = wait.until(EC.element_to_be_clickable((By.XPATH, confirm_xpath)))
+
+            # 3. Click it
+            driver.execute_script("arguments[0].click();", confirm_btn)
+            print("  [DEBUG] Design confirmation 'Apply' clicked.")
+
+        except Exception as e:
+            print(f"  [ERROR] Failed to click confirm button in popup: {e}")
+
     except Exception as e:
         print(f"  [ERROR] Failed to apply template '{target_label}': {e}")
 
-def wait_for_conversion_and_continue(driver, wait, has_password, long_timeout=600):
+def apply_design_settings(driver, wait, has_password, display_title):
+    change_book_title(display_title, wait)
+    apply_my_design(driver, has_password, wait)
+
+
+def wait_for_conversion_and_continue(driver, wait, has_password, display_title, long_timeout=600):
     print(f"[STEP] Waiting for conversion to complete (Timeout: {long_timeout}s)...")
 
     # Create a dedicated wait object for the conversion process
@@ -237,7 +274,7 @@ def wait_for_conversion_and_continue(driver, wait, has_password, long_timeout=60
         # The URL changes to 'bookinfo' only after conversion hits 100%
         conversion_wait.until(EC.url_contains("bookinfo"))
         print(f"  [DEBUG] Conversion finished. New URL: {driver.current_url}")
-        apply_design_settings(driver,wait,has_password)
+        apply_design_settings(driver,wait,has_password, display_title)
 
     except TimeoutException:
         print(f"  [ERROR] Conversion exceeded {long_timeout} seconds.")
@@ -257,7 +294,7 @@ def wait_for_conversion_and_continue(driver, wait, has_password, long_timeout=60
 
     return True
 
-def test_fliphtml5_with_profile(pdf_folder_path):
+def fliphtml5_automation(pdf_folder_path, display_title):
     chrome_options = Options()
 
     # 1. NEW PROFILE LOGIC: Create a dedicated automation folder
@@ -313,7 +350,7 @@ def test_fliphtml5_with_profile(pdf_folder_path):
             print("[5] Skipping password protection.")
 
         if upload_fin_pdf(pdf_folder_path):
-            wait_for_conversion_and_continue(driver, wait, has_password)
+            wait_for_conversion_and_continue(driver, wait, has_password, display_title)
 
     except Exception as e:
         # This will now print the full error name which is helpful
@@ -322,30 +359,3 @@ def test_fliphtml5_with_profile(pdf_folder_path):
 
     finally:
         print("Process complete. Browser remains open due to 'detach' option.")
-
-
-def run_isolated_test():
-    chrome_options = Options()
-    automation_data = os.path.join(os.environ['LOCALAPPDATA'], r"Google\Chrome\AutomationData")
-    chrome_options.add_argument(f"--user-data-dir={automation_data}")
-    chrome_options.add_experimental_option("detach", True)
-
-    driver = webdriver.Chrome(options=chrome_options)
-    wait = WebDriverWait(driver, 20)
-
-    try:
-        url = "https://fliphtml5.com/edit-book/38783277/design?lang=en"
-        driver.get(url)
-
-        print("Waiting for page to load. Please log in if prompted...")
-        time.sleep(5)
-
-        # Testing the function with has_password=True as an example
-        apply_design_settings(driver, wait, has_password=True)
-
-    except Exception as e:
-        print(f"Test Runner Error: {e}")
-
-
-if __name__ == "__main__":
-    run_isolated_test()
