@@ -2,13 +2,15 @@ import os
 import subprocess
 import logging
 from pathlib import Path
+from typing import Tuple, Optional
+
 import psutil
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH
 from src.logic.file_operations import validate_csv_path
-from utils.input_output_tools import print_red
+from utils.input_output_tools import print_red, print_green
 import csv
 
 
@@ -143,43 +145,51 @@ def get_lock_status(filepath: Path) -> str:
 
     return 'none'
 
-def update_book_tracker(dana_code: str, folder_name: str) -> bool:
+
+def update_excel_cell(row_index: int, col_index: int, value: str):
     """
-    Safely updates the Excel tracker with the normalized folder name.
+    Directly updates a specific cell using a pre-found row index.
     """
-    if not dana_code or not folder_name:
-        logging.error("Invalid DanaCode or FolderName provided for Excel update.")
+    try:
+        workbook = load_workbook(BOOK_TRACKER_EXCEL_FILE_PATH, data_only=False)
+        sheet = workbook["ראשי"]
+
+        sheet.cell(row=row_index, column=col_index).value = value
+
+        workbook.save(BOOK_TRACKER_EXCEL_FILE_PATH)
+        return True
+    except PermissionError:
+        print_red("Cannot save: Please close the Excel file!")
         return False
 
-    try:
-        # data_only=False ensures formulas in your sheet are preserved
-        workbook = load_workbook(BOOK_TRACKER_EXCEL_FILE_PATH, data_only=False)
-        sheet = workbook.active
+def find_danacode_row(dana_code: str) -> Tuple[bool, Optional[int]]:
+    """
+    Searches for the DanaCode in Column B and returns (Success, Row_Index).
+    """
 
-        target_code = str(dana_code).strip()
+    if not dana_code:
+        return False, None
+
+    try:
+        # Load workbook (ReadOnly=True makes it faster if we are just searching)
+        workbook = load_workbook(BOOK_TRACKER_EXCEL_FILE_PATH, data_only=False)
+        sheet = workbook["ראשי"]
+        target = str(dana_code).strip()
 
         for row in sheet.iter_rows(min_col=2, max_col=2):
             cell = row[0]
-            if cell.value and str(cell.value).strip() == target_code:
-                sheet.cell(row=cell.row, column=12).value = folder_name # Column L (index 12)
-                workbook.save(BOOK_TRACKER_EXCEL_FILE_PATH)
-                return True
+            if cell.value and str(cell.value).strip() == target:
+                return True, cell.row
 
-        logging.warning(f"DanaCode {target_code} not found in Column B.")
-        return False
+        logging.warning(f"DanaCode {target} not found in Column B.")
+        return False, None
 
     except PermissionError:
-        logging.error(f"Permission denied: {BOOK_TRACKER_EXCEL_FILE_PATH.name} is locked.")
-        return False
-    except FileNotFoundError:
-        logging.error(f"Excel file missing at: {BOOK_TRACKER_EXCEL_FILE_PATH}")
-        return False
-    except InvalidFileException:
-        logging.error("The tracker file is corrupted or not a valid .xlsx file.")
-        return False
+        print_red(f"Access Denied: {BOOK_TRACKER_EXCEL_FILE_PATH.name} is open.")
+        return False, None
     except Exception as e:
-        logging.error(f"An unexpected error occurred during Excel update: {e}")
-        return False
+        logging.error(f"Excel Error: {e}")
+        return False, None
 
 
 def open_tracker_in_excel() -> None:
@@ -191,7 +201,7 @@ def open_tracker_in_excel() -> None:
         logging.error(f"Failed to open Excel: {e}")
 
 
-def run_excel_update_workflow(dana_code: str, folder_name: str) -> bool:
+def run_excel_update_workflow(dana_code: str) -> bool:
     """
     Orchestrates the Excel update with specific feedback on lock types.
     """
@@ -214,7 +224,7 @@ def run_excel_update_workflow(dana_code: str, folder_name: str) -> bool:
             return False  # Properly returns bool
 
     # Proceed with the update
-    success = update_book_tracker(dana_code, folder_name)
+    success = find_danacode_row_in_excel(dana_code)
     if success:
         open_tracker_in_excel()
 

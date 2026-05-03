@@ -1,7 +1,7 @@
 import re
 import logging
 from src.constants import SMALL_WORDS, VALID_TITLE_REGEX
-from typing import Optional
+from utils.input_output_tools import print_red
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -70,32 +70,32 @@ def get_book_metadata(raw_title: str) -> dict:
     }
 
 
-def normalize_book_title() -> Optional[dict]:
+def normalize_book_title() -> dict | None:
     """
-    CLI wrapper that persists until a valid English title or empty bypass is provided.
+    CLI wrapper that persists until a valid English title is provided.
+    Bypass (empty input) is no longer allowed.
     """
-
-    prompt = "Leave empty if title is already correct.\nEnter book title in English: "
-
     while True:
-        user_input = input(prompt).strip()
+        user_input = input("Enter book title in English: ").strip()
 
-        # 1. Handle Bypass
+        # 1. Check for empty input immediately
         if not user_input:
-            print("Bypassing normalization. No changes made.")
-            return None  # Return None explicitly so the caller knows it was bypassed
+            print_red("Error: Input cannot be empty. Please enter an English title.")
+            continue
 
-        # 2. Process and Validate
+        # 2. Process and Validate via the metadata tool
         metadata = get_book_metadata(user_input)
 
+        # 3. Check if the metadata tool actually liked the input
         if metadata["display_title"] not in ["Error", "Invalid Input"]:
             print("-" * 30)
             print(f"Display Title: {metadata['display_title']}")
-            print(f"Folder Name:  {metadata['folder_name']}")
+            print(f"Folder Name:   {metadata['folder_name']}")
             print("-" * 30)
-            return metadata  # RETURN the dictionary here, don't just break
+            return metadata  # Return the valid dictionary to the caller
 
-        print("Invalid input detected. Please use English alphanumeric characters.")
+        # 4. Fallback message if the characters were non-English or invalid
+        print_red("Invalid input detected. Please use English alphanumeric characters.")
 
 
 if __name__ == "__main__":

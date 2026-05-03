@@ -5,7 +5,7 @@ import shutil
 
 from src.gemini.gemini_prompt import handle_gemini_toc_transcription
 from src.constants import COVERS_FOLDER
-from src.logic.excel_tools import run_excel_update_workflow, process_toc_extraction
+from src.logic.excel_tools import process_toc_extraction, find_danacode_row
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import *
@@ -159,16 +159,26 @@ def process_pdf():
 
     if not danacode:
         print_red("Process halted: Cover error.")
+        return None  # return None on failure
 
-    if not run_excel_update_workflow(danacode, folder_name):
-        print_red("Process halted: Excel error.")
-        return
+    success, row_index = find_danacode_row(danacode)
+
+    while not success:
+        print_red(f"Error: DanaCode '{danacode}' not found or Excel is locked.")
+
+        if not yes_or_no("Would you like to fix the Excel and try again? "):
+            print("User cancelled. Exiting process.")
+            return None
+
+        success, row_index = find_danacode_row(danacode)
+
+    print_green(f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
 
     # 3. Handle PDF Extraction
     success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name)
     if not success:
         print_red("Extraction workflow failed.")
-        return
+        return None
 
     if con_file_path:
         add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder)
