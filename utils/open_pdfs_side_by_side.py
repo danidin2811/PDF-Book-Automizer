@@ -61,8 +61,12 @@ def open_pdfs_side_by_side_acrobat(con_pdf_path, fin_pdf_path):
     subprocess.Popen([acrobat_exe, "/n", str(pdf1_obj)])
     subprocess.Popen([acrobat_exe, "/n", str(pdf2_obj)])
 
-    # 4. Wait for windows to initialize
-    time.sleep(5)
+    # 4. Informative Wait
+    print("Initializing Acrobat instances. Please wait 5 seconds...", end="", flush=True)
+    for _ in range(5):
+        time.sleep(1)
+        print(".", end="", flush=True)
+    print("\nPositioning windows...")
 
     # 5. Calculate screen dimensions
     monitor_info = win32api.GetMonitorInfo(win32api.MonitorFromPoint((0, 0)))

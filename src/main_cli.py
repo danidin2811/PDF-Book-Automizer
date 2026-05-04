@@ -28,7 +28,7 @@ def main():
 
         except Exception as e:
             print(f"An error occurred during processing: {e}")
-            if not yes_or_no("Unexpected error. Try again?"):
+            if not yes_or_no("Unexpected error. Try again? "):
                 return
 
     wait_for_ready_signal(

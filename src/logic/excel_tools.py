@@ -109,7 +109,6 @@ def process_toc_extraction(initial_csv_path):
             return None
 
 
-
 def get_lock_status(filepath: Path) -> str:
     """
     Determines the specific nature of a file lock.

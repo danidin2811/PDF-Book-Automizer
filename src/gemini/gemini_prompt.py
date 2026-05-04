@@ -37,6 +37,7 @@ def handle_gemini_toc_transcription(source_folder, con_file_path):
     # Open Gemini in the default browser
     webbrowser.open("https://gemini.google.com/app")
 
+    print(f"# Open the folder so you can drag the file easily {source_folder}")
     # Open the folder so you can drag the file easily
     os.startfile(source_folder)
 

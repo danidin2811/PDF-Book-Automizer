@@ -127,20 +127,37 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
 
     return True, con_file_path
 
-def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder):
+def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) -> bool:
+    """
+        Handles TOC transcription and applies bookmarks with a local retry loop.
+        Returns True if successful, False if the user chooses to skip/cancel.
+    """
+
     print_green(f"Ready for transcription: {con_file_path.name}")
+
     handle_gemini_toc_transcription(input_pdf_path, con_file_path)
     csv_path = os.path.join(source_folder, "toc.csv")
     output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
-    toc_entries = process_toc_extraction(csv_path)
 
-    if toc_entries:
-        # Only proceed if we actually got data
-        append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries)
-        print_green("Toc has been successfully added to the PDF file")
+    toc_entries = None
 
-    else:
-        print("Bookmark appending cancelled due to missing or invalid TOC data.")
+    while not toc_entries:
+        toc_entries = process_toc_extraction(csv_path)
+
+        if not toc_entries:
+            if not yes_or_no("TOC entries are missing/invalid. Fix the CSV and try again? "):
+                return False
+
+    while True:
+        success = append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries)
+
+        if success:
+            print_green("TOC applied successfully.")
+            return True
+
+        print_red("\n[!] TOC Append Failed (Check if PDF is open in Acrobat).")
+        if not yes_or_no("Fix the issue and retry writing bookmarks? "):
+            return False
 
 def process_pdf():
     checklist = (
