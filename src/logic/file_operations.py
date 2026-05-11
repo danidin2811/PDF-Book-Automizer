@@ -1,7 +1,9 @@
-import logging
+import os
 import re
 import shutil
 from pathlib import Path
+
+from utils.input_output_tools import print_red, print_green, wait_for_ready_signal
 
 
 def validate_csv_path(path_str: str) -> tuple[bool, str]:
@@ -43,7 +45,7 @@ def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
 
     # 1. Validation for network drive reliability
     if not source_dir.exists():
-        logging.error(f"Source directory does not exist: {source_dir}")
+        print_red(f"Source directory does not exist: {source_dir}")
         return ''
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -59,9 +61,45 @@ def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
                 dana_code = match.group(1)
                 try:
                     shutil.move(str(file_path), str(dest_dir / file_path.name))
-                    logging.info(f"Moved DanaCode: {dana_code}")
+                    print(f"Moved DanaCode: {dana_code}")
                     return dana_code
                 except PermissionError:
-                    logging.error(f"File {file_path.name} is in use.")
+                    print_red(f"File {file_path.name} is in use.")
 
     return ''
+
+
+def check_file_size(file_path: str, limit_mb: int = 500) -> bool:
+    """
+    Checks if a PDF exceeds the limit and advises on the new naming convention.
+    """
+
+    if not os.path.exists(file_path):
+        return False
+
+    limit_bytes = limit_mb * 1024 * 1024
+    file_size_bytes = os.path.getsize(file_path)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_bytes > limit_bytes:
+        print(f"\n[!] ALERT: File is {file_size_mb:.2f} MB (Limit: {limit_mb} MB).")
+
+        # Construct the suggested new filename
+        original_path = Path(file_path)
+        new_name = f"DOWNSIZED {original_path.name}"
+
+        wait_for_ready_signal(
+            "ACTION REQUIRED: The PDF is too large for FlipHTML5.\n"
+            "1. Open the PDF in Acrobat\n"
+            "2. Use 'Save as Other' -> 'Reduced Size PDF'\n"
+            f"3. Save the new file as save: {new_name}\n"
+        )
+
+        wait_for_ready_signal(
+            "ACTION REQUIRED:\n"
+            f"Before proceeding, please make sure that the new DOWNSIZED file is less than {limit_mb} MB\n"
+        )
+
+
+    print_green(f"Check passed: {file_size_mb:.2f} MB.")
+    return True

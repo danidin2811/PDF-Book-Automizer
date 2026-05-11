@@ -174,7 +174,7 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) ->
         if not yes_or_no("Fix the issue and retry writing bookmarks? "):
             return False
 
-def process_pdf():
+def process_pdf() -> tuple[str, Path, int | None] | None:
     checklist = (
         "\nPRE-PROCESSING CHECKLIST:\n"
         "1. Close the Excel tracking table\n"
@@ -219,7 +219,7 @@ def process_pdf():
 
     open_pdfs_side_by_side_acrobat(str(con_file_path), str(fin_file_path))
 
-    return source_folder, row_index
+    return fin_file_path, source_folder, row_index
 
 if __name__ == "__main__":
     process_pdf()

@@ -1,7 +1,7 @@
 import re
 import logging
 from src.constants import SMALL_WORDS, VALID_TITLE_REGEX
-from utils.input_output_tools import print_red
+from utils.input_output_tools import print_red, yes_or_no
 
 
 def is_valid_english_title(title: str) -> bool:
@@ -38,20 +38,58 @@ def to_title_case(title: str) -> str:
     return ' '.join(formatted_words)
 
 
+def is_snake_case(text: str) -> bool:
+    """
+    Checks if a string consists only of lowercase letters, numbers, and underscores.
+    """
+    # Regex: ^ (start), [a-z0-9_] (allowed chars), + (one or more), $ (end)
+    pattern = r'^[a-z0-9_]+$'
+    return bool(re.match(pattern, text))
+
+
 def to_snake_case(title: str) -> str:
     """
-    Converts an English string to web-safe snake_case for folder naming.
+    Converts an English string to web-safe snake_case with user intervention.
     """
 
-    # Remove all non-alphanumeric (except spaces/hyphens for temporary splitting)
-    text = re.sub(r'[^a-zA-Z0-9\s-]', '', title)
-    text = re.sub(r'[\s-]+', '_', text)
-    return text.strip('_').lower()
+    def auto_convert(text):
+        # The conversion logic
+        text = re.sub(r'[^a-zA-Z0-9\s-]', '', text)
+        text = re.sub(r'[\s-]+', '_', text)
+        return text.strip('_').lower()
+
+    snake_title = auto_convert(title)
+
+    while True:
+        # 1. Check Length
+        if len(snake_title) > 40:
+            print_red(f"[!] The generated snake title {snake_title} is too long ({len(snake_title)} chars). fliphtml limit is 40.")
+            snake_title = input("Please enter a shorter version: ").strip()
+            continue
+
+        # 2. Check Format
+        if not is_snake_case(snake_title):
+            print_red(f"[!] '{snake_title}' is not valid snake_case.")
+
+            # Offer to auto-fix the manually entered text
+            if yes_or_no("Would you like to auto-format the title? "):
+                snake_title = auto_convert(snake_title)
+                print(f"Auto-formatted to: {snake_title}")
+                continue  # Re-validate the newly formatted title
+
+            else:
+                snake_title = input("Please fix the format manually: ").strip()
+                continue
+
+        # 3. Final Confirmation
+        break
+
+    return snake_title
 
 
 def get_book_metadata(raw_title: str) -> dict:
     """
-    Orchestrates conversion. Includes validation for English alphanumeric content.
+    Orchestrates conversion. Asks user for title preference and always generates a snake_case folder name.
     """
 
     if not raw_title.strip():
@@ -62,9 +100,26 @@ def get_book_metadata(raw_title: str) -> dict:
         logging.error("Invalid Input: Title must contain English alphanumeric characters.")
         return {"display_title": "Invalid Input", "folder_name": "invalid_input"}
 
+    prompt = (f"You entered: '{raw_title}'.\n"
+              f"Do you want to CONVERT this to Title Case? (y=convert, n=keep original) ")
+
+    if yes_or_no(prompt):
+        display_title = to_title_case(raw_title)
+
+    else:
+        display_title = raw_title
+
+    # 2. Always normalize the folder name for the filesystem
+    folder_name = to_snake_case(display_title)
+
+    print("-" * 30)
+    print(f"Display Title: {display_title}")
+    print(f"Folder Name:   {folder_name}")
+    print("-" * 30)
+
     return {
-        "display_title": to_title_case(raw_title),
-        "folder_name": to_snake_case(raw_title)
+        "display_title": display_title,
+        "folder_name": folder_name
     }
 
 

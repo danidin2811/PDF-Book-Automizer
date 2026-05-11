@@ -1,4 +1,5 @@
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
+from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
 from utils.norm_book_title import normalize_book_title
 from logic.pdf_processor import process_pdf
@@ -13,6 +14,7 @@ def main():
         wait_for_ready_signal(f"ACTION REQUIRED: Rename the book folder to: {book_folder_name}")
 
     book_folder_path = None
+    fin_file_path = ''
     book_row_index_in_table = 0
 
     while book_folder_path is None:
@@ -24,7 +26,7 @@ def main():
                     return
                 continue
 
-            book_folder_path, book_row_index_in_table = result
+            fin_file_path, book_folder_path, book_row_index_in_table = result
 
         except Exception as e:
             print_red(f"An error occurred during processing: {e}")
@@ -49,7 +51,10 @@ def main():
         "Before proceeding, make sure to remove 'Blank Page' bookmarks after adding the front and back covers.\n"
     )
     print("Back to main")
-    folder_in_amazon = clean_up_folder_after_processing(book_folder_path)
+
+    check_file_size(fin_file_path)
+
+    folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path))
 
     fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table)
 
