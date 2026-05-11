@@ -37,6 +37,7 @@ def wait_for_ready_signal(prompt):
 
     print(prompt)
     input("Press Enter to continue: ")
+    print("Enter pressed")
 
 
 def ask_offset():

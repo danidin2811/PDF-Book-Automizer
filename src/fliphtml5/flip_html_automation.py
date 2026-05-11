@@ -84,7 +84,7 @@ def customize_book_link(book_title, wait, driver):
             raise e
 
 
-def set_book_password(book_title, wait, driver):
+def set_book_password(row_index, wait, driver):
     from src.logic.excel_tools import get_password_from_excel
 
     print("[STEP] Opening settings popover for Visibility...")
@@ -102,9 +102,6 @@ def set_book_password(book_title, wait, driver):
     visibility_btn = wait.until(EC.visibility_of_element_located((By.XPATH, visibility_btn_xpath)))
     driver.execute_script("arguments[0].click();", visibility_btn)
 
-    print(f"  [DEBUG] Fetching password for: {book_title}")
-    password = get_password_from_excel(book_title)
-
     print("  [DEBUG] Selecting 'Private with Password' radio button...")
     # The radio button is inside an El-Radio component. We target the span containing the text.
     radio_xpath = "//label[.//span[text()='Private with Password']]"
@@ -115,6 +112,8 @@ def set_book_password(book_title, wait, driver):
     print("  [DEBUG] Waiting for password input field...")
     password_input = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "input.h5_input")))
     password_input.clear()
+    password = get_password_from_excel(row_index)
+    print(f"Found password {password}")
     password_input.send_keys(password)
 
     # FlipHTML5 often requires clicking 'Add' or pressing Enter for the password to register
@@ -156,7 +155,7 @@ def upload_fin_pdf(pdf_folder_path):
         print("[STEP] Triggering the Windows Open dialog...")
         wait_for_ready_signal("MANUAL ACTION REQUIRED:\n"
                               "1. Click the 'Upload Files' button\n"
-                              "2. Press Ctrl+V in the File name field at the bottom to paste the path"
+                              "2. Press Ctrl+V in the File name field at the bottom to paste the path\n"
                               "3. Press Enter to start the file upload\n")
 
         return True
@@ -294,7 +293,7 @@ def wait_for_conversion_and_continue(driver, wait, has_password, display_title, 
 
     return True
 
-def fliphtml5_automation(pdf_folder_path, display_title):
+def fliphtml5_automation(pdf_folder_path, display_title, row_index):
     chrome_options = Options()
 
     # 1. NEW PROFILE LOGIC: Create a dedicated automation folder
@@ -344,7 +343,7 @@ def fliphtml5_automation(pdf_folder_path, display_title):
         has_password = yes_or_no("Does the book needs to be protected by password? ")
         if has_password:
             print("[5] Proceeding to set password...")
-            set_book_password(book_title, wait, driver)
+            set_book_password(row_index, wait, driver)
 
         else:
             print("[5] Skipping password protection.")

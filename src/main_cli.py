@@ -1,33 +1,33 @@
+from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.system_tools import clean_up_folder_after_processing
 from utils.norm_book_title import normalize_book_title
 from logic.pdf_processor import process_pdf
-from utils.input_output_tools import wait_for_ready_signal, yes_or_no
-
+from utils.input_output_tools import wait_for_ready_signal, yes_or_no, print_red
+from src.logic.excel_tools import run_excel_update_workflow
 
 def main():
-    metadata = normalize_book_title()
+    book_titles = normalize_book_title()
 
-    if metadata:
-        book_folder_name = metadata['folder_name']
+    if book_titles:
+        book_folder_name = book_titles['folder_name']
         wait_for_ready_signal(f"ACTION REQUIRED: Rename the book folder to: {book_folder_name}")
 
     book_folder_path = None
+    book_row_index_in_table = 0
 
     while book_folder_path is None:
         try:
-            book_folder_path = process_pdf()
+            result = process_pdf()
 
-            if book_folder_path is None:
-                print("\n[!] The process encountered an error (Check Excel or Cover).")
+            if result is None:  # If process_pdf returned None on early failure
+                if not yes_or_no("\n[!] Error encountered. RETRY? "):
+                    return
+                continue
 
-                if not yes_or_no("Would you like to fix the error and RETRY? "):
-                    print("Exiting script...")
-                    return  # Exit the whole program
-
-                print("Restarting process...\n")
+            book_folder_path, book_row_index_in_table = result
 
         except Exception as e:
-            print(f"An error occurred during processing: {e}")
+            print_red(f"An error occurred during processing: {e}")
             if not yes_or_no("Unexpected error. Try again? "):
                 return
 
@@ -43,13 +43,17 @@ def main():
         "MANUAL ACTION REQUIRED:\n"
         "Great, you've finished inspecting the TOC, to proceed, please add front and back covers as needed.\n"
     )
-
+    print("Back to main")
     wait_for_ready_signal(
         "MANUAL ACTION REQUIRED:\n"
         "Before proceeding, make sure to remove 'Blank Page' bookmarks after adding the front and back covers.\n"
     )
-
+    print("Back to main")
     folder_in_amazon = clean_up_folder_after_processing(book_folder_path)
+
+    fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table)
+
+    run_excel_update_workflow(book_row_index_in_table, book_titles['folder_name'])
 
     print("Workflow complete!")
 

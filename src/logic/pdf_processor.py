@@ -43,7 +43,7 @@ def setup_working_directory() -> tuple[Path, Path, str]:
         Prompts for the PDF path and derives the folder context.
         Returns: (input_pdf_path, source_folder, folder_name)
     """
-
+    print("now in setup_working_directory")
     input_pdf_path = get_input_pdf_path()
     source_folder = input_pdf_path.parent  # get the source folder of the PDF file
     folder_name = str(source_folder.name)
@@ -94,12 +94,21 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
     fin_file_path = source_folder / f"{folder_name}_fin.pdf"
     book_title = source_folder.name
 
-    try:
-        shutil.copy2(input_pdf_path, fin_file_path)
-        print_green(f"Created working file: {fin_file_path.name}")
-    except Exception as e:
-        print_red(f"Failed to create fin file: {e}")
-        return False, None  # This replaces the 'interrupting' return
+    copy_success = False
+    while not copy_success:
+        try:
+            shutil.copy2(input_pdf_path, fin_file_path)
+            print_green(f"Created working file: {fin_file_path.name}")
+            copy_success = True
+
+        except PermissionError:
+            print_red(f"Permission denied: {input_pdf_path.name} is locked.")
+            if not yes_or_no("Please close the PDF and try again? "):
+                return False, None
+
+        except Exception as e:
+            print_red(f"Failed to create fin file: {e}")
+            return False, None
 
     total_pages = get_pdf_page_count(fin_file_path)
     if not total_pages:
@@ -109,16 +118,21 @@ def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_na
     for sec in ['con', 'pre', 'chap']:
         ranges[sec] = get_page_range_ui(sec, total_pages)
 
-    if yes_or_no("Does the book have an English section? "):
+    has_english = yes_or_no("Does the book have an English section? ")
+    if has_english:
         ranges['english'] = get_page_range_ui('english', total_pages)
 
-        extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
+    # LOCAL RETRY LOOP for the extraction logic
+    while True:
+        success = extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
 
-        if handle_english_section_logic(source_folder, folder_name):
-            print_green(f"Successfully processed English section for {folder_name}")
+        if success:
+            if has_english:
+                handle_english_section_logic(source_folder, folder_name)
+            break  # Exit retry loop
 
-    else:
-        extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
+        if not yes_or_no("Extraction failed due to file lock. Retry? "):
+            return False, None
 
     con_file_path = source_folder / f"{book_title}_con.pdf"
 
@@ -136,6 +150,7 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) ->
     print_green(f"Ready for transcription: {con_file_path.name}")
 
     handle_gemini_toc_transcription(input_pdf_path, con_file_path)
+    print("Back to add_toc_to_pdf")
     csv_path = os.path.join(source_folder, "toc.csv")
     output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
 
@@ -168,7 +183,7 @@ def process_pdf():
     )
 
     wait_for_ready_signal(checklist)
-
+    print("Back in process_pdf")
     input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
 
     # 2. Process Cover and Excel
@@ -204,7 +219,7 @@ def process_pdf():
 
     open_pdfs_side_by_side_acrobat(str(con_file_path), str(fin_file_path))
 
-    return source_folder
+    return source_folder, row_index
 
 if __name__ == "__main__":
     process_pdf()

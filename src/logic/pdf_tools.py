@@ -142,21 +142,31 @@ def extract_pdf_sections(book_title: str, source_path: Path, ranges: Dict[str, T
     Core logic to slice a PDF into multiple section files.
     """
 
-    reader = PdfReader(source_path)
+    try:
+        reader = PdfReader(source_path)
 
-    for section_name, (start, end) in ranges.items():
-        writer = PdfWriter()
+        for section_name, (start, end) in ranges.items():
+            writer = PdfWriter()
 
-        for i in range(start - 1, end): # Adjusting for 0-indexed PyPDF2 pages
-            writer.add_page(reader.pages[i])
+            for i in range(start - 1, end):
+                writer.add_page(reader.pages[i])
 
-        if section_name != "english":
-            output_filename = output_dir / f"{book_title}_{section_name}.pdf"
-        else:
-            output_filename = output_dir / f"{book_title}.pdf"
+            if section_name != "english":
+                output_filename = output_dir / f"{book_title}_{section_name}.pdf"
+            else:
+                output_filename = output_dir / f"{book_title}.pdf"
 
-        with open(output_filename, "wb") as output_pdf:
-            writer.write(output_pdf)
+            with open(output_filename, "wb") as output_pdf:
+                writer.write(output_pdf)
+        return True
+
+    except PermissionError:
+        print_red(f"\n[!] Access Denied: A required PDF file is open in another program.")
+        return False
+
+    except Exception as e:
+        print_red(f"\n[!] Extraction Error: {e}")
+        return False
 
 
 def handle_english_section_logic(source_folder: Path, folder_name: str) -> bool:

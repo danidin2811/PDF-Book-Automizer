@@ -6,15 +6,25 @@ from typing import Tuple, Optional
 
 import psutil
 from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
 
-from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH
+from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH, FOLDER_NAME_COL
 from src.logic.file_operations import validate_csv_path
 from utils.input_output_tools import print_red, print_green
 import csv
 
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+
+def col_letter_to_index(letter: str) -> int:
+    """
+    Converts Excel column letter to a 1-based index (A=1, B=2, L=12).
+    """
+    index = 0
+    for char in letter.upper():
+        # ord('A') is 65. So 'A' - 64 = 1.
+        index = index * 26 + (ord(char) - 64)
+    return index
 
 
 def get_new_toc_entries(csv_path):
@@ -145,21 +155,23 @@ def get_lock_status(filepath: Path) -> str:
     return 'none'
 
 
-def update_excel_cell(row_index: int, col_index: int, value: str):
+def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: str):
     """
     Directly updates a specific cell using a pre-found row index.
     """
     try:
         workbook = load_workbook(BOOK_TRACKER_EXCEL_FILE_PATH, data_only=False)
-        sheet = workbook["ראשי"]
+        sheet = workbook[sheet_name]
 
         sheet.cell(row=row_index, column=col_index).value = value
 
         workbook.save(BOOK_TRACKER_EXCEL_FILE_PATH)
+        print_green(f"Successfully wrote {value} to {row_index} x {col_index} in {sheet_name} sheet")
         return True
     except PermissionError:
         print_red("Cannot save: Please close the Excel file!")
         return False
+
 
 def find_danacode_row(dana_code: str) -> Tuple[bool, Optional[int]]:
     """
@@ -200,7 +212,7 @@ def open_tracker_in_excel() -> None:
         logging.error(f"Failed to open Excel: {e}")
 
 
-def run_excel_update_workflow(dana_code: str) -> bool:
+def run_excel_update_workflow(row_index: int, folder_name: str) -> bool:
     """
     Orchestrates the Excel update with specific feedback on lock types.
     """
@@ -223,31 +235,27 @@ def run_excel_update_workflow(dana_code: str) -> bool:
             return False  # Properly returns bool
 
     # Proceed with the update
-    success = find_danacode_row_in_excel(dana_code)
-    if success:
-        open_tracker_in_excel()
+    update_excel_cell(row_index,col_letter_to_index(FOLDER_NAME_COL),"ראשי",folder_name)
 
-    return success
+    open_tracker_in_excel()
+    return True
 
 
-def get_password_from_excel(book_title):
-    import pandas as pd
+def get_password_from_excel(row_index: int) -> Optional[str]:
+    """
+    Directly retrieves a password from a known row index using openpyxl.
+    """
+    from openpyxl import load_workbook
 
-    df = pd.read_excel(BOOK_TRACKER_EXCEL_FILE_PATH) # Load the Excel file
+    try:
+        workbook = load_workbook(BOOK_TRACKER_EXCEL_FILE_PATH, data_only=True)
+        sheet = workbook["ראשי"]
 
-    # Define your column headers
-    folder_col = "שם תיקייה בתיקיית העלאה לאמזון"
-    password_col = "סיסמא"
+        # Column 13 is 'M' (where the password usually lives)
+        password = sheet.cell(row=row_index, column=13).value
 
-    # Search for the row where the folder column matches book_title
-    # We use .strip() to avoid errors from accidental spaces in the Excel cells
-    result = df[df[folder_col].astype(str).str.strip() == book_title.strip()]
+        return str(password) if password else None
 
-    if not result.empty:
-        # Get the first match and return the password
-        password = result.iloc[0][password_col]
-        return str(password)
-
-    else:
-        print(f"Warning: No password found for {book_title} in Excel.")
+    except Exception as e:
+        print(f"Error retrieving password: {e}")
         return None

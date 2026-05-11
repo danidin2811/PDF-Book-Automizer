@@ -42,15 +42,14 @@ def delete_file(file_path: Path) -> bool:
 
 def clean_up_folder_after_processing(folder_path: str):
     """
-    Organizes specific PDF sections into a 'flip' folder, deletes temporary files,
-    and moves the entire book folder to a final archive destination.
+    Organizes files into 'flip', deletes temps, and moves folder to archive.
+    Retries locally if files are locked by other processes.
     """
 
-    from utils.input_output_tools import wait_for_ready_signal, print_red, print_green
+    from utils.input_output_tools import wait_for_ready_signal, print_red, print_green, yes_or_no
     import shutil
 
-    folder = Path(folder_path)
-    flip_folder = folder / "flip"
+    print("in clean_up_folder_after_processing")
 
     wait_for_ready_signal(
         "\nMANUAL ACTION REQUIRED:\n"
@@ -58,40 +57,45 @@ def clean_up_folder_after_processing(folder_path: str):
         "2. Ensure no files from this folder are open in any application.\n"
     )
 
-    flip_folder.mkdir(exist_ok=True) # 1. Create the 'flip' sub-folder
+    print("Back to clean")
 
-    flip_suffixes = ("_fin.pdf", "_pre.pdf", "_chap.pdf", "_eng.pdf", "_con.pdf") # 2. Define the suffixes to move
+    folder = Path(folder_path)
 
-    # 3. Scan and process files
-    for item in folder.iterdir():
-        if item.is_dir(): # Skip the 'flip' folder itself and any other sub-directories
-            continue
+    while True:  # Outer loop: Retries the entire cleanup process
+        try:
+            flip_folder = folder / "flip"
+            flip_folder.mkdir(exist_ok=True)
 
-        if item.name.lower().endswith(flip_suffixes): # Check if the file needs to be moved the 'flip' folder
-            try:
-                shutil.move(str(item), str(flip_folder / item.name))
-                print(f"Moved {item.name} to flip")
+            flip_suffixes = ("_fin.pdf", "_pre.pdf", "_chap.pdf", "_eng.pdf", "_con.pdf")
 
-            except Exception as e:
-                print_red(f"Could not move {item.name}: {e}")
+            # Stage 1: Move and Delete individual files
+            for item in list(folder.iterdir()):  # Use list() to avoid iterator issues during move/delete
+                if item.is_dir() or not item.exists():
+                    continue
 
-        else: # Delete all other files (like toc.csv, logs, or temporary snippets)
-            try:
-                item.unlink()
-                print(f"Deleted: {item.name}")
-            except Exception as e:
-                print_red(f"Could not delete {item.name}: {e}")
+                if item.name.lower().endswith(flip_suffixes):
+                    shutil.move(str(item), str(flip_folder / item.name))
+                    print(f"Moved {item.name} to flip")
 
-    # 4. Move the entire folder to the archive destination
-    try:
-        from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER
+                else:
+                    item.unlink()
+                    print(f"Deleted: {item.name}")
 
-        dest_path = Path(READY_TO_UPLOAD_TO_AMAZON_FOLDER) / folder.name
-        shutil.move(str(folder), str(dest_path))
-        print_green(f"Successfully archived folder to: {dest_path}")
-        flip_path = dest_path / "flip"
-        return flip_path
+            # Stage 2: Move the entire folder to Archive
+            from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER
+            dest_path = Path(READY_TO_UPLOAD_TO_AMAZON_FOLDER) / folder.name
 
-    except Exception as e:
-        print_red(f"Failed to move entire folder to archive: {e}")
+            shutil.move(str(folder), str(dest_path))
 
+            print_green(f"Successfully archived folder to: {dest_path}")
+            return dest_path / "flip"  # Success exit
+
+        except (PermissionError, OSError) as e:
+            print_red(f"\n[!] Cleanup Blocked: {e}")
+            print("A file or folder is still open in another program (Acrobat, Excel, or File Explorer).")
+
+            if not yes_or_no("Would you like to close the programs and RETRY cleanup?"):
+                print_red("Cleanup aborted. The folder remains in its current location.")
+                return None
+
+            print("Retrying cleanup...\n")

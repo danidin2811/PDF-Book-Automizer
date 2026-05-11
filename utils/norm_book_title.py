@@ -3,8 +3,6 @@ import logging
 from src.constants import SMALL_WORDS, VALID_TITLE_REGEX
 from utils.input_output_tools import print_red
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
 
 def is_valid_english_title(title: str) -> bool:
     """
