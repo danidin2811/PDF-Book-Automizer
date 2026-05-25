@@ -112,11 +112,6 @@ def get_book_metadata(raw_title: str) -> dict:
     # 2. Always normalize the folder name for the filesystem
     folder_name = to_snake_case(display_title)
 
-    print("-" * 30)
-    print(f"Display Title: {display_title}")
-    print(f"Folder Name:   {folder_name}")
-    print("-" * 30)
-
     return {
         "display_title": display_title,
         "folder_name": folder_name

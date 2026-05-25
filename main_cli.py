@@ -2,7 +2,7 @@ from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
 from utils.norm_book_title import normalize_book_title
-from logic.pdf_processor import process_pdf
+from src.logic.pdf_processor import process_pdf
 from utils.input_output_tools import wait_for_ready_signal, yes_or_no, print_red
 from src.logic.excel_tools import run_excel_update_workflow
 

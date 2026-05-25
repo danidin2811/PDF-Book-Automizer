@@ -336,7 +336,7 @@ def fliphtml5_automation(pdf_folder_path, display_title, row_index):
         book_title = Path(pdf_folder_path).parent.name
         print(f"[3] Processing book title: {book_title}")
 
-        # customize_book_link(book_title, wait, driver)
+        customize_book_link(book_title, wait, driver)
         print("[4] Book link customized.")
 
         from utils.input_output_tools import yes_or_no
