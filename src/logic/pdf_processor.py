@@ -149,7 +149,7 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) ->
 
     print_green(f"Ready for transcription: {con_file_path.name}")
 
-    handle_gemini_toc_transcription(input_pdf_path, con_file_path)
+    handle_gemini_toc_transcription(source_folder, con_file_path)
     print("Back to add_toc_to_pdf")
     csv_path = os.path.join(source_folder, "toc.csv")
     output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")

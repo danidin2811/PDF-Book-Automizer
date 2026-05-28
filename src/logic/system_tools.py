@@ -85,8 +85,9 @@ def clean_up_folder_after_processing(folder_path: str):
             from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER
             dest_path = Path(READY_TO_UPLOAD_TO_AMAZON_FOLDER) / folder.name
 
-            shutil.move(str(folder), str(dest_path))
             print("Moving folder to amazon folder, please wait... ")
+            shutil.move(str(folder), str(dest_path))
+
 
             print_green(f"Successfully archived folder to: {dest_path}")
             return dest_path / "flip"  # Success exit
