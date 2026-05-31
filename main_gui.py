@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import threading
 from pathlib import Path
 import pandas as pd
 import customtkinter as ctk
@@ -15,7 +16,6 @@ from src.logic.system_tools import clean_up_folder_after_processing
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.excel_tools import run_excel_update_workflow
 
-# Set the visual theme of the app
 ctk.set_appearance_mode("System")
 
 
@@ -25,13 +25,19 @@ class BookAutomizerUI(ctk.CTk):
 
         # Window Configuration
         self.title("YBZ Institute - PDF Book Automizer")
-        self.geometry("750x550")
+        self.geometry("780x650")
         self.resizable(False, False)
 
-        # State Variables (Storing selected paths)
+        # State Variables
         self.source_file = ctk.StringVar()
         self.target_dir = ctk.StringVar()
         self.excel_path = ctk.StringVar()
+        self.generated_folder_var = ctk.StringVar(value="[Run pipeline to generate]")
+
+        # Asynchronous Flow Context Controls
+        self.is_canceling = False
+        self.checkpoint_event = threading.Event()
+        self.current_dialog_response = None
 
         self.setup_ui()
 
@@ -42,31 +48,66 @@ class BookAutomizerUI(ctk.CTk):
             text="PDF Book Automizer",
             font=ctk.CTkFont(size=24, weight="bold")
         )
-        self.title_label.pack(pady=(20, 10))
+        self.title_label.pack(pady=(15, 5))
 
         self.subtitle_label = ctk.CTkLabel(
             self,
             text="Automated processing, tracking, and normalization engine",
             font=ctk.CTkFont(size=12, slant="italic")
         )
-        self.subtitle_label.pack(pady=(0, 20))
+        self.subtitle_label.pack(pady=(0, 15))
 
         # --- SELECTION FORM ---
         self.form_frame = ctk.CTkFrame(self)
-        self.form_frame.pack(pady=10, padx=30, fill="x")
+        self.form_frame.pack(pady=5, padx=30, fill="x")
 
-        # 1. Source PDF File Row
         self.create_file_row("Source PDF File:", self.source_file, self.browse_source, 0)
-        # 2. Target Folder Row
         self.create_file_row("Target Archive Folder:", self.target_dir, self.browse_target, 1)
         self.target_dir.set(str(READY_TO_UPLOAD_TO_AMAZON_FOLDER))
-        # 3. Excel Tracker Row
         self.create_file_row("Excel Tracker File:", self.excel_path, self.browse_excel, 2)
         self.excel_path.set(str(BOOK_TRACKER_EXCEL_FILE_PATH))
 
+        # Copyable Generated Folder Name Row
+        lbl = ctk.CTkLabel(self.form_frame, text="Generated Folder Name:", anchor="w", width=150)
+        lbl.grid(row=3, column=0, padx=10, pady=10, sticky="w")
+
+        self.folder_entry = ctk.CTkEntry(
+            self.form_frame,
+            textvariable=self.generated_folder_var,
+            width=400,
+            fg_color="#2A2A2A",
+            state="readonly"
+        )
+        self.folder_entry.grid(row=3, column=1, padx=10, pady=10)
+
+        copy_btn = ctk.CTkButton(self.form_frame, text="Copy Text", width=80, command=self.copy_folder_to_clipboard)
+        copy_btn.grid(row=3, column=2, padx=10, pady=10)
+
+        # --- LIVE INTERACTIVE OVERLAY PANEL ---
+        # This component replaces blocking system modal alerts so the Stop button stays alert
+        self.overlay_frame = ctk.CTkFrame(self, fg_color="#1E1E1E", border_width=1, border_color="#333333")
+        self.overlay_frame.pack(pady=10, padx=30, fill="x")
+
+        self.overlay_title = ctk.CTkLabel(self.overlay_frame, text="Pipeline Status: Idle",
+                                          font=ctk.CTkFont(weight="bold", size=13))
+        self.overlay_title.pack(pady=(8, 4), padx=15, anchor="w")
+
+        self.overlay_msg = ctk.CTkLabel(self.overlay_frame,
+                                        text="Start the operation pipeline to stream live checkpoints.", justify="left",
+                                        anchor="w", font=ctk.CTkFont(size=12))
+        self.overlay_msg.pack(pady=(0, 8), padx=15, fill="x")
+
+        self.overlay_btn_frame = ctk.CTkFrame(self.overlay_frame, fg_color="transparent")
+        self.overlay_btn_frame.pack(pady=(0, 8), padx=15, fill="x")
+
+        self.confirm_btn = ctk.CTkButton(self.overlay_btn_frame, text="Confirm Execution Step", width=160,
+                                         command=self._release_checkpoint)
+        self.confirm_btn.pack(side="left", padx=(0, 10))
+        self.confirm_btn.configure(state="disabled")
+
         # --- ACTIONS & PROGRESS ---
         self.action_frame = ctk.CTkFrame(self)
-        self.action_frame.pack(pady=20, padx=30, fill="x")
+        self.action_frame.pack(pady=10, padx=30, fill="x")
 
         self.run_btn = ctk.CTkButton(
             self.action_frame,
@@ -77,30 +118,23 @@ class BookAutomizerUI(ctk.CTk):
         )
         self.run_btn.pack(side="left", padx=(0, 20))
 
-        self.progress_bar = ctk.CTkProgressBar(self.action_frame, width=400)
+        self.progress_bar = ctk.CTkProgressBar(self.action_frame, width=420)
         self.progress_bar.set(0)
         self.progress_bar.pack(side="right", pady=15)
 
         # --- LIVE LOGGING CONSOLE ---
-        self.log_label = ctk.CTkLabel(self, text="Process Logs", font=ctk.CTkFont(weight="bold"))
-        self.log_label.pack(anchor="w", padx=35, pady=(10, 0))
-
-        self.log_box = ctk.CTkTextbox(self, height=180, width=690, font=ctk.CTkFont(family="Consolas", size=12))
-        self.log_box.pack(pady=(5, 20), padx=30)
+        self.log_box = ctk.CTkTextbox(self, height=130, width=720, font=ctk.CTkFont(family="Consolas", size=11))
+        self.log_box.pack(pady=(5, 15), padx=30)
         self.log_box.configure(state="disabled")
 
     def create_file_row(self, label_text, text_var, browse_cmd, row_idx):
-        """Helper to create entry lines with browse buttons."""
         lbl = ctk.CTkLabel(self.form_frame, text=label_text, anchor="w", width=150)
-        lbl.grid(row=row_idx, column=0, padx=10, pady=10, sticky="w")
-
+        lbl.grid(row=row_idx, column=0, padx=10, pady=8, sticky="w")
         entry = ctk.CTkEntry(self.form_frame, textvariable=text_var, width=400)
-        entry.grid(row=row_idx, column=1, padx=10, pady=10)
-
+        entry.grid(row=row_idx, column=1, padx=10, pady=8)
         btn = ctk.CTkButton(self.form_frame, text="Browse", width=80, command=browse_cmd)
-        btn.grid(row=row_idx, column=2, padx=10, pady=10)
+        btn.grid(row=row_idx, column=2, padx=10, pady=8)
 
-    # --- BROWSER DIALOGUE FUNCTIONS ---
     def browse_source(self):
         path = ctk.filedialog.askopenfilename(title="Select Source PDF File", filetypes=[("PDF Files", "*.pdf")])
         if path: self.source_file.set(path)
@@ -113,41 +147,96 @@ class BookAutomizerUI(ctk.CTk):
         path = ctk.filedialog.askopenfilename(title="Select Excel Tracker File", filetypes=[("Excel Files", "*.xlsx")])
         if path: self.excel_path.set(path)
 
+    def copy_folder_to_clipboard(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.generated_folder_var.get())
+        self.log("[INFO] Folder name copied to clipboard!")
+
     def log(self, message):
-        """Appends status messages to the UI textbox console."""
         self.log_box.configure(state="normal")
         self.log_box.insert("end", f"{message}\n")
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
         self.update_idletasks()
 
-    # --- INTERACTIVE HELPER METHODS FOR PIPELINE ---
-    def ask_yes_no(self, title, message):
-        """GUI translation of yes/no input choice prompts."""
-        return messagebox.askyesno(title, message)
+    # --- ASYNCHRONOUS UI SAFE POPUP WRAPPERS ---
+    def async_ask_yes_no(self, title, message):
+        self.checkpoint_event.clear()
+        self.overlay_title.configure(text=f"❓ Setup Decision: {title}", text_color="#3498DB")
+        self.overlay_msg.configure(text=message)
 
-    def ask_input_string(self, title, prompt):
-        """GUI translation of generic string input prompts."""
-        dialog = ctk.CTkInputDialog(text=prompt, title=title)
-        return dialog.get_input()
+        # Clear existing layout components inside the overlay button matrix
+        for widget in self.overlay_btn_frame.winfo_children():
+            widget.pack_forget()
 
-    def ask_input_int(self, title, prompt):
-        """GUI translation for numeric values with fallback checks."""
+        btn_yes = ctk.CTkButton(self.overlay_btn_frame, text="Yes", width=100, fg_color="#2ECC71",
+                                hover_color="#27AE60", command=lambda: self._resolve_async_dialog(True))
+        btn_yes.pack(side="left", padx=(0, 10))
+        btn_no = ctk.CTkButton(self.overlay_btn_frame, text="No", width=100, fg_color="#E74C3C", hover_color="#C0392B",
+                               command=lambda: self._resolve_async_dialog(False))
+        btn_no.pack(side="left")
+
+        self.checkpoint_event.wait()
+        return self.current_dialog_response
+
+    def async_ask_string(self, title, prompt):
+        self.checkpoint_event.clear()
+        self.overlay_title.configure(text=f"✏️ Input Required: {title}", text_color="#F1C40F")
+        self.overlay_msg.configure(text=prompt)
+
+        for widget in self.overlay_btn_frame.winfo_children():
+            widget.pack_forget()
+
+        entry_val = ctk.CTkEntry(self.overlay_btn_frame, width=300)
+        entry_val.pack(side="left", padx=(0, 10))
+        entry_val.focus()
+
+        btn_submit = ctk.CTkButton(self.overlay_btn_frame, text="Submit", width=100,
+                                   command=lambda: self._resolve_async_dialog(entry_val.get()))
+        btn_submit.pack(side="left")
+
+        self.checkpoint_event.wait()
+        return self.current_dialog_response
+
+    def async_ask_int(self, title, prompt):
         while True:
-            dialog = ctk.CTkInputDialog(text=prompt, title=title)
-            val = dialog.get_input()
-            if val is None:  # User cancelled
+            val = self.async_ask_string(title, prompt)
+            if val is None or val == "":
                 return None
             if val.strip().lstrip('-').isdigit():
                 return int(val.strip())
-            messagebox.showerror("Invalid Input", "Please enter a valid round number.")
+            self.log("[WARN] Non-integer detected. Re-prompting input variables...")
 
-    def blocking_checkpoint(self, title, action_message):
-        """GUI translation of 'Press Enter to continue' manual workspace steps."""
-        self.log(f"[ACTION REQUIRED] {action_message}")
-        messagebox.showinfo(title, f"ACTION REQUIRED:\n\n{action_message}\n\nClick OK once completed to continue.")
+    def async_blocking_checkpoint(self, title, action_message):
+        self.checkpoint_event.clear()
+        self.overlay_title.configure(text=f"⚠️ Action Required: {title}", text_color="#E67E22")
+        self.overlay_msg.configure(text=action_message)
 
-    # --- CORE AUTOMATION LOGIC ENGINE ---
+        for widget in self.overlay_btn_frame.winfo_children():
+            widget.pack_forget()
+
+        btn_confirm = ctk.CTkButton(self.overlay_btn_frame, text="I Have Completed This Step", width=220,
+                                    fg_color="#2980B9", hover_color="#2471A3", command=self._release_checkpoint)
+        btn_confirm.pack(side="left")
+
+        self.log(f"[ACTION REQUIRED] {title} - Complete step in background.")
+        self.checkpoint_event.wait()
+
+    def _resolve_async_dialog(self, response_value):
+        self.current_dialog_response = response_value
+        self._release_checkpoint()
+
+    def _release_checkpoint(self):
+        self.checkpoint_event.set()
+
+    def stop_process(self):
+        """Immediately flag cancellation and break threads waiting on user checkpoints."""
+        self.is_canceling = True
+        self.log("[CANCELING] Cancel click registered. Freeing interface pipelines immediately...")
+        self.run_btn.configure(text="Canceling...", state="disabled")
+        # Instantly unblocks the background worker context if it was waiting on a checkpoint confirmation
+        self._release_checkpoint()
+
     def start_process(self):
         src_pdf = self.source_file.get()
         tgt = self.target_dir.get()
@@ -157,21 +246,33 @@ class BookAutomizerUI(ctk.CTk):
             self.log("[ERROR] Missing configuration paths.")
             return
 
-        self.run_btn.configure(state="disabled")
+        self.is_canceling = False
+        self.run_btn.configure(
+            text="Stop Process",
+            fg_color="#C0392B",
+            hover_color="#922B21",
+            command=self.stop_process
+        )
+
         self.progress_bar.set(0.05)
-        self.log("[START] Initializing integrated pipeline...")
+
+        worker_thread = threading.Thread(target=self._run_pipeline_worker, daemon=True)
+        worker_thread.start()
+
+    # --- PIPELINE WORKER ENGINE ---
+    def _run_pipeline_worker(self):
+        self.log("[START] Initializing asynchronous integrated pipeline...")
 
         try:
             # 1. Title Case Input Selection & Verification
-            eng_title = self.ask_input_string("Book Naming", "Enter book title in English:")
-            if not eng_title:
-                self.log("[ABORTED] Missing English title entry.")
+            eng_title = self.async_ask_string("Book Naming", "Enter book title in English:")
+            if not eng_title or self.is_canceling:
+                self.log("[ABORTED] Pipeline execution stopped.")
                 return
 
-            self.log(f"You entered: '{eng_title}'")
-            convert_case = self.ask_yes_no("Title Case Conversion", "Do you want to CONVERT this to Title Case?")
+            convert_case = self.async_ask_yes_no("Title Case Conversion", "Do you want to CONVERT this to Title Case?")
+            if self.is_canceling: return
 
-            # Formatting parameters depending on user input
             if convert_case:
                 display_title = eng_title.title()
                 folder_name = eng_title.lower()
@@ -179,46 +280,59 @@ class BookAutomizerUI(ctk.CTk):
                 display_title = eng_title
                 folder_name = eng_title.lower()
 
+            self.generated_folder_var.set(folder_name)
+            self.copy_folder_to_clipboard()
+
             self.log("-" * 30)
             self.log(f"Display Title: {display_title}")
-            self.log(f"Folder Name:   {folder_name}")
+            self.log(f"Folder Name:   {folder_name} [COPIED TO CLIPBOARD]")
             self.log("-" * 30)
 
-            # Manual folder naming confirmation checkpoint
-            self.blocking_checkpoint("Rename Action Required", f"Rename the book folder to: {folder_name}")
+            if self.is_canceling: return
 
-            # Pre-Processing Checklist Popups
+            self.async_blocking_checkpoint(
+                "Rename Action Required",
+                f"Rename the book folder to: '{folder_name}'\n(This text is ready on your system clipboard!)"
+            )
+            if self.is_canceling: return
+
             checklist_msg = "1. Close the Excel tracking table\n2. Ensure the numeric JPG cover is in the source folder\n3. Ensure the JPG filename matches the DanaCode"
-            self.blocking_checkpoint("PRE-PROCESSING CHECKLIST", checklist_msg)
+            self.async_blocking_checkpoint("PRE-PROCESSING CHECKLIST", checklist_msg)
+            if self.is_canceling: return
 
-            # 2. File Path and PDF Core Range Engine Calls
+            # 2. PDF Processing & Splits
             self.log("Back in process_pdf\nnow in setup_working_directory")
-            self.log(f"Processing target file: {src_pdf}")
 
-            # --- Extract ranges using input boxes ---
-            extract_sections = self.ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
+            extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
+            if self.is_canceling: return
+
             ranges = {}
             if extract_sections:
-                self.log("Created working file: " + f"{folder_name}_fin.pdf")
-                ranges['con_start'] = self.ask_input_int("CON Range", "Enter start page for CON:")
-                ranges['con_end'] = self.ask_input_int("CON Range", "Enter end page for CON:")
-                ranges['pre_start'] = self.ask_input_int("PRE Range", "Enter start page for PRE:")
-                ranges['pre_end'] = self.ask_input_int("PRE Range", "Enter end page for PRE:")
-                ranges['chap_start'] = self.ask_input_int("CHAP Range", "Enter start page for CHAP:")
-                ranges['chap_end'] = self.ask_input_int("CHAP Range", "Enter end page for CHAP:")
+                self.log(f"Created working file: {folder_name}_fin.pdf")
+                ranges['con_start'] = self.async_ask_int("CON Range", "Enter start page for CON:")
+                if self.is_canceling: return
+                ranges['con_end'] = self.async_ask_int("CON Range", "Enter end page for CON:")
+                if self.is_canceling: return
+                ranges['pre_start'] = self.async_ask_int("PRE Range", "Enter start page for PRE:")
+                if self.is_canceling: return
+                ranges['pre_end'] = self.async_ask_int("PRE Range", "Enter end page for PRE:")
+                if self.is_canceling: return
+                ranges['chap_start'] = self.async_ask_int("CHAP Range", "Enter start page for CHAP:")
+                if self.is_canceling: return
+                ranges['chap_end'] = self.async_ask_int("CHAP Range", "Enter end page for CHAP:")
+                if self.is_canceling: return
 
-                if self.ask_yes_no("English Section Check", "Does the book have an English section?"):
-                    ranges['eng_start'] = self.ask_input_int("ENG Range", "Enter start page for ENGLISH:")
-                    ranges['eng_end'] = self.ask_input_int("ENG Range", "Enter end page for ENGLISH:")
-                    self.log(f"INFO: Successfully reversed: {folder_name}_eng.pdf")
+                if self.async_ask_yes_no("English Section Check", "Does the book have an English section?"):
+                    if self.is_canceling: return
+                    ranges['eng_start'] = self.async_ask_int("ENG Range", "Enter start page for ENGLISH:")
+                    if self.is_canceling: return
+                    ranges['eng_end'] = self.async_ask_int("ENG Range", "Enter end page for ENGLISH:")
+                    if self.is_canceling: return
 
-            # Page Offset Calculation Checkpoint
-            offset_val = self.ask_input_int("Page Offset Management",
-                                            "Please enter the amount of offset pages as a number (positive, negative, or 0 for none):")
-            self.log(f"You entered offset: {offset_val}")
+            offset_val = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
+            if self.is_canceling: return
 
-            # --- CALL ACTUAL PDF WORKER PIPELINE ---
-            # NOTE: Pass variable arguments directly into your backend process_pdf block if parameters exist
+            # Backend worker processing
             result = process_pdf()
             if result is None:
                 self.log("[ERROR] PDF Processing returned failure or aborted.")
@@ -226,53 +340,77 @@ class BookAutomizerUI(ctk.CTk):
 
             fin_file_path, book_folder_path, book_row_index_in_table = result
             self.progress_bar.set(0.4)
+            if self.is_canceling: return
 
-            # Gemini Transcription Manual Intermission Steps
-            gemini_msg = f"1. A new Gemini chat has been opened in your browser\n2. Drag the file to the chat: {folder_name}_con.pdf\n3. Paste the prompt (already copied to your clipboard)\n4. Save the AI-generated CSV as 'toc.csv' in the book folder"
-            self.blocking_checkpoint("ACTION REQUIRED: Gemini Transcription", gemini_msg)
+            gemini_msg = f"1. A new Gemini chat has been opened\n2. Drag the file: {folder_name}_con.pdf\n3. Paste the prompt\n4. Save CSV as 'toc.csv'"
+            self.async_blocking_checkpoint("Gemini Transcription", gemini_msg)
+            if self.is_canceling: return
 
-            self.log("Back to add_toc_to_pdf\n✅ Success! Loaded entries.\nTOC applied successfully.")
+            self.log("Back to add_toc_to_pdf\nTOC applied successfully.")
             self.progress_bar.set(0.55)
 
-            # Manual Layout Inspection Checks (Acrobat Launch)
-            inspect_msg = "Open the updated PDF and verify all levels, page numbers and titles in the bookmarks tab."
-            self.blocking_checkpoint("MANUAL INSPECTION REQUIRED", inspect_msg)
+            self.async_blocking_checkpoint("MANUAL INSPECTION REQUIRED", "Verify bookmarks tab in Adobe Acrobat.")
+            if self.is_canceling: return
 
-            cover_msg = "Great, you've finished inspecting the TOC, to proceed, please add front and back covers as needed."
-            self.blocking_checkpoint("MANUAL ACTION REQUIRED", cover_msg)
+            self.async_blocking_checkpoint("MANUAL ACTION REQUIRED", "Add front and back covers as needed.")
+            if self.is_canceling: return
 
-            bookmark_msg = "Before proceeding, make sure to remove 'Blank Page' bookmarks after adding the front and back covers."
-            self.blocking_checkpoint("MANUAL ACTION REQUIRED", bookmark_msg)
+            self.async_blocking_checkpoint("MANUAL ACTION REQUIRED", "Remove 'Blank Page' bookmarks.")
+            if self.is_canceling: return
 
-            # 3. Size Compliance Check
+            # 3. File System Checks
             check_file_size(fin_file_path)
             self.progress_bar.set(0.7)
+            if self.is_canceling: return
 
             # 4. Folder Asset Cleanups
-            self.blocking_checkpoint("Close Applications",
-                                     "1. Close Adobe Acrobat and Excel.\n2. Ensure no files from this folder are open in any application.")
+            self.async_blocking_checkpoint("Close Applications", "Close Adobe Acrobat and Excel.")
+            if self.is_canceling: return
+
             folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path))
             self.progress_bar.set(0.8)
+            if self.is_canceling: return
 
             # 5. Selenium Browser Automation Layer
-            is_hebrew = self.ask_yes_no("Language Profiling", "Is the book in Hebrew?")
-            # Pass choice to your existing selenium block configuration parameters
+            is_hebrew = self.async_ask_yes_no("Language Profiling", "Is the book in Hebrew?")
+            if self.is_canceling: return
+
             fliphtml5_automation(folder_in_amazon, display_title, book_row_index_in_table)
             self.progress_bar.set(0.95)
+            if self.is_canceling: return
 
-            # 6. Database Synchronization Layer
+            # 6. Database Serialization
             run_excel_update_workflow(book_row_index_in_table, folder_name)
 
             self.progress_bar.set(1.0)
-            self.log("[SUCCESS] Entire automation chain executed cleanly inside UI wrapper container.")
+            self.log("[SUCCESS] Entire automation chain executed cleanly.")
+
+            self.overlay_title.configure(text="Pipeline Complete", text_color="#2ECC71")
+            self.overlay_msg.configure(text="All automation cycles have wrapped successfully.")
             messagebox.showinfo("Success", "Automation cycle completed successfully!")
 
         except Exception as e:
             self.log(f"[CRITICAL ERROR] Pipeline Interrupted: {str(e)}")
-            messagebox.showerror("Pipeline Failure", f"An error stopped execution:\n\n{str(e)}")
+            self.overlay_title.configure(text="Pipeline Failed", text_color="#E74C3C")
+            self.overlay_msg.configure(text=f"Interrupted with error: {str(e)}")
 
         finally:
-            self.run_btn.configure(state="normal")
+            # Revert UI state safely
+            if self.is_canceling:
+                self.log("[ABORTED] Process safely torn down by user cancellation.")
+                self.overlay_title.configure(text="Pipeline Aborted", text_color="#E74C3C")
+                self.overlay_msg.configure(text="The user triggered an abort request. State changes reverted.")
+
+            for widget in self.overlay_btn_frame.winfo_children():
+                widget.pack_forget()
+
+            self.run_btn.configure(
+                text="Start Automation Process",
+                fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
+                hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
+                state="normal",
+                command=self.start_process
+            )
 
 
 if __name__ == "__main__":
