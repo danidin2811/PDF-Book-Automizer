@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import customtkinter as ctk
 from tkinter import messagebox
+from src.logic.interface_controller import AppInterface
 
 # --- BACKEND MODULE IMPORTS ---
 from src.logic.file_operations import check_file_size, validate_pdf_path
@@ -400,40 +401,14 @@ class BookAutomizerUI(ctk.CTk):
     # --- PIPELINE WORKER ENGINE ---
     def _run_pipeline_worker(self):
         self.log("[START] Initializing asynchronous integrated pipeline...")
+        interface = AppInterface(ui=self)
 
         try:
-            # 1. Title Case Input Selection & Verification
-            while True:
-                eng_title = self.async_ask_string("Book Naming", "Enter book title in English:")
-
-                # If user closes or hits cancel, abort the pipeline
-                if self.is_canceling or eng_title is None:
-                    self.log("[ABORTED] Pipeline execution stopped.")
-                    return
-
-                # FIX: Regex ensuring the string contains ONLY English characters (a-z, A-Z), numbers (0-9), and spaces
-                # it also checks that it isn't just an empty string of pure spaces
-                if eng_title.strip() != "" and re.match(r"^[a-zA-Z0-9 ]+$", eng_title):
-                    break  # Valid English input received, break the validation loop
-
-                # Warn the user and re-loop if invalid characters are passed
-                self.log(
-                    "[WARN] Invalid title syntax. Title must contain ONLY English characters (A-Z, a-z) or numbers (0-9).")
-                messagebox.showwarning(
-                    "Validation Error",
-                    "The book title must be written in English containing valid alphanumeric characters, and cannot be left blank."
-                )
-
-                # Continue with your existing case conversion selection logic...
-            convert_case = self.async_ask_yes_no("Title Case Conversion", "Do you want to CONVERT this to Title Case?")
+            book_metadata = normalize_book_title(interface)
             if self.is_canceling: return
 
-            if convert_case:
-                display_title = eng_title.title()
-                folder_name = eng_title.lower()
-            else:
-                display_title = eng_title
-                folder_name = eng_title.lower()
+            folder_name = book_metadata["folder_name"]
+            display_title = book_metadata["display_title"]
 
             self.clipboard_clear()
             self.clipboard_append(folder_name)
@@ -467,17 +442,21 @@ class BookAutomizerUI(ctk.CTk):
             extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
             if self.is_canceling: return
 
-            ranges = {}
+            self.current_ranges_data = {}
+
             if extract_sections:
                 # Check for an English section first to see if we should include ENG fields in our single window layout
                 has_english = self.async_ask_yes_no("English Section Check", "Does the book have an English section?")
                 if self.is_canceling: return
 
                 # Query all ranges concurrently inside one unified matrix layout frame
-                ranges = self.async_ask_ranges(include_english=has_english)
-                if self.is_canceling or not ranges: return
+                captured_ranges = self.async_ask_ranges(include_english=has_english)
+                if self.is_canceling or not captured_ranges: return
 
-            self.offset: int | None = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
+                self.current_ranges_data = captured_ranges
+
+            offset_val = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
+            self.offset = offset_val if offset_val is not None else 0
             if self.is_canceling: return
 
             # Backend worker processing

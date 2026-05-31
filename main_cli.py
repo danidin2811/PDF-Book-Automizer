@@ -5,9 +5,12 @@ from utils.norm_book_title import normalize_book_title
 from src.logic.pdf_processor import process_pdf
 from utils.input_output_tools import wait_for_ready_signal, yes_or_no, print_red
 from src.logic.excel_tools import run_excel_update_workflow
+from src.logic.interface_controller import AppInterface
 
 def main():
-    book_titles = normalize_book_title()
+    interface = AppInterface(ui=None)
+
+    book_titles = normalize_book_title(interface)
 
     if book_titles:
         book_folder_name = book_titles['folder_name']

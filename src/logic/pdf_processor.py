@@ -181,7 +181,7 @@ def run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=None)
 
     return True, con_file_path
 
-def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) -> bool:
+def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, ui) -> bool:
     """
         Handles TOC transcription and applies bookmarks with a local retry loop.
         Returns True if successful, False if the user chooses to skip/cancel.
@@ -189,7 +189,7 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) ->
 
     print_green(f"Ready for transcription: {con_file_path.name}")
 
-    handle_gemini_toc_transcription(source_folder, con_file_path)
+    handle_gemini_toc_transcription(source_folder, con_file_path, ui)
     print("Back to add_toc_to_pdf")
     csv_path = os.path.join(source_folder, "toc.csv")
     output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
@@ -275,7 +275,7 @@ def process_pdf(ui=None) -> Optional[tuple]:
         return None
 
     if con_file_path:
-        add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder)
+        add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, ui=ui)
 
     fin_file_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
 
