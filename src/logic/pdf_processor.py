@@ -82,11 +82,14 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
             print("Operation cancelled by user.")
             return None
 
-def run_extraction_workflow(input_pdf_path: Path, source_folder: Path, folder_name: str) -> tuple[bool, Optional[Path]]:
+def run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=None):
     """
     Handles the physical file copying and section extraction logic.
     Returns True to continue, False to stop the main process.
     """
+
+    if ui is not None:
+        pass
 
     if not yes_or_no("Do you want to extract section PDFs? "):
         return True, None
@@ -174,19 +177,36 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder) ->
         if not yes_or_no("Fix the issue and retry writing bookmarks? "):
             return False
 
-def process_pdf() -> tuple[str, Path, int | None] | None:
-    checklist = (
-        "\nPRE-PROCESSING CHECKLIST:\n"
+def process_pdf(ui=None) -> Optional[tuple]:
+    """
+    Executes the book processing pipeline.
+    If a ui context is provided, requests inputs asynchronously through the GUI layout layer.
+    Fallback to traditional CLI prompts if no UI context is supplied.
+    """
+
+    checklist_msg = (
         "1. Close the Excel tracking table\n"
         "2. Ensure the numeric JPG cover is in the source folder\n"
         "3. Ensure the JPG filename matches the DanaCode\n\n"
     )
 
-    wait_for_ready_signal(checklist)
-    print("Back in process_pdf")
-    input_pdf_path, source_folder, folder_name = setup_working_directory() # 1. Setup paths
+    if ui is not None:
+        ui.async_blocking_checkpoint("PRE-PROCESSING CHECKLIST", checklist_msg)
+        if ui.is_canceling: return None
 
-    # 2. Process Cover and Excel
+    else: # Fallback to legacy CLI if run outside the GUI
+        from utils.input_output_tools import wait_for_ready_signal
+        wait_for_ready_signal(checklist_msg)
+
+    print("Back in process_pdf")
+
+    if ui is not None:
+        input_pdf_path = Path(ui.source_file.get())
+        source_folder = input_pdf_path.parent
+        folder_name = input_pdf_path.stem.lower()
+    else:
+        input_pdf_path, source_folder, folder_name = setup_working_directory()
+
     danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
 
     if not danacode:
@@ -198,16 +218,21 @@ def process_pdf() -> tuple[str, Path, int | None] | None:
     while not success:
         print_red(f"Error: DanaCode '{danacode}' not found or Excel is locked.")
 
-        if not yes_or_no("Would you like to fix the Excel and try again? "):
-            print("User cancelled. Exiting process.")
-            return None
+        if ui is not None:
+            retry = ui.async_ask_yes_no("Excel Table Missing Record", "Would you like to fix the Excel and try again?")
+            if ui.is_canceling or not retry:
+                print("User cancelled or closed application pipeline context. Exiting process.")
+                return None
+        else:
+            if not yes_or_no("Would you like to fix the Excel and try again? "):
+                print("User cancelled. Exiting process.")
+                return None
 
         success, row_index = find_danacode_row(danacode)
 
-    print_green(f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
+        print_green(f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
 
-    # 3. Handle PDF Extraction
-    success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name)
+    success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=ui)
     if not success:
         print_red("Extraction workflow failed.")
         return None

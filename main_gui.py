@@ -1,3 +1,4 @@
+import re
 import os
 import sys
 import shutil
@@ -8,6 +9,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 # --- BACKEND MODULE IMPORTS ---
+from src.logic.file_operations import check_file_size, validate_pdf_path
 from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER, BOOK_TRACKER_EXCEL_FILE_PATH
 from utils.norm_book_title import normalize_book_title, get_book_metadata
 from src.logic.pdf_processor import process_pdf
@@ -18,6 +20,20 @@ from src.logic.excel_tools import run_excel_update_workflow
 
 ctk.set_appearance_mode("System")
 
+class CustomStdoutStream:
+    """Intercepts terminal print data signals and safely routes them to the interactive UI console box."""
+    def __init__(self, ui_instance):
+        self.ui = ui_instance
+        self.terminal = sys.stdout
+
+    def write(self, message):
+        self.terminal.write(message) # Keep printing to standard terminal output
+        if message.strip():
+            # Thread-safe scheduling to append text messages to your logging box
+            self.ui.after(0, lambda: self.ui.log(message.strip()))
+
+    def flush(self):
+        self.terminal.flush()
 
 class BookAutomizerUI(ctk.CTk):
     def __init__(self):
@@ -39,7 +55,21 @@ class BookAutomizerUI(ctk.CTk):
         self.current_dialog_response = None
 
         self.setup_ui()
-        self.apply_universal_paste_bindings()
+        self.force_english_keyboard_layout()
+
+        sys.stdout = CustomStdoutStream(self)
+
+    def force_english_keyboard_layout(self):
+        """Forces the current active window thread to switch to the English keyboard layout."""
+        if sys.platform == "win32":
+            import ctypes
+            # 0x04090409 is the standard load identifier for English (US)
+            # 1 indicates that the layout should be activated immediately for the current thread
+            try:
+                ctypes.windll.user32.ActivateKeyboardLayout(0x04090409, 1)
+                print("[SYSTEM] Keyboard layout successfully forced to English.")
+            except Exception as e:
+                print(f"[SYSTEM ERROR] Could not automatically shift keyboard layout: {e}")
 
     def setup_ui(self):
         # --- TITLE BANNER ---
@@ -121,33 +151,11 @@ class BookAutomizerUI(ctk.CTk):
         btn = ctk.CTkButton(self.form_frame, text="Browse", width=80, command=browse_cmd)
         btn.grid(row=row_idx, column=2, padx=10, pady=8)
 
-    def apply_universal_paste_bindings(self):
-        def fallback_paste_handler(event):
-            try:
-                cb_text = self.clipboard_get()
-                if event.widget and hasattr(event.widget, 'insert'):
-                    try:
-                        event.widget.delete("sel.first", "sel.last")
-                    except Exception:
-                        pass
-                    event.widget.insert("insert", cb_text)
-            except Exception:
-                pass
-            return "break"
-
-        self.bind_all("<Control-v>", fallback_paste_handler)
-        self.bind_all("<Control-V>", fallback_paste_handler)
-        self.bind_all("<Control-hebrew_he>", fallback_paste_handler)
-
-        def global_key_checker(event):
-            if event.state & 0x0004 and event.keycode == 86:
-                return fallback_paste_handler(event)
-
-        self.bind_all("<KeyPress>", global_key_checker)
 
     def browse_source(self):
         path = ctk.filedialog.askopenfilename(title="Select Source PDF File", filetypes=[("PDF Files", "*.pdf")])
-        if path: self.source_file.set(path)
+        if path:
+            self.source_file.set(path.strip('"'))
 
     def browse_target(self):
         path = ctk.filedialog.askdirectory(title="Select Target Archive Folder")
@@ -173,6 +181,8 @@ class BookAutomizerUI(ctk.CTk):
     # --- ASYNCHRONOUS UI SAFE POPUP WRAPPERS ---
     def async_ask_yes_no(self, title, message):
         self.checkpoint_event.clear()
+        self.current_dialog_response = None  # FIX: Reset stale state data
+
         self.overlay_title.configure(text=f"❓ Setup Decision: {title}", text_color="#3498DB")
         self.update_overlay_text(message)
 
@@ -191,6 +201,8 @@ class BookAutomizerUI(ctk.CTk):
 
     def async_ask_string(self, title, prompt):
         self.checkpoint_event.clear()
+        self.current_dialog_response = None
+
         self.overlay_title.configure(text=f"✏️ Input Required: {title}", text_color="#F1C40F")
         self.update_overlay_text(prompt)
 
@@ -200,6 +212,9 @@ class BookAutomizerUI(ctk.CTk):
         entry_val = ctk.CTkEntry(self.overlay_btn_frame, width=300)
         entry_val.pack(side="left", padx=(0, 10))
         entry_val.focus()
+
+        # Local element binding (This is perfectly clean and stays safe)
+        entry_val.bind("<Return>", lambda event: self._resolve_async_dialog(entry_val.get()))
 
         btn_submit = ctk.CTkButton(self.overlay_btn_frame, text="Submit", width=100,
                                    command=lambda: self._resolve_async_dialog(entry_val.get()))
@@ -213,33 +228,31 @@ class BookAutomizerUI(ctk.CTk):
             val = self.async_ask_string(title, prompt)
             if val is None or val == "":
                 return None
-            if val.strip().lstrip('-').isdigit():
-                return int(val.strip())
+            if str(val).strip().lstrip('-').isdigit():
+                return int(str(val).strip())
             self.log("[WARN] Non-integer detected. Re-prompting input variables...")
 
     def async_ask_ranges(self, include_english=False):
         """Displays an integrated matrix inside the overlay window to handle all numbers concurrently."""
         while True:
             self.checkpoint_event.clear()
+            self.current_dialog_response = None  # Reset stale state data
+
             self.overlay_title.configure(text="📊 Section Target Configuration Grid", text_color="#F1C40F")
             self.update_overlay_text("Input start and end page numbers for each requested subsection split.")
 
             for widget in self.overlay_btn_frame.winfo_children():
                 widget.pack_forget()
 
-            # --- FIX 1: Force the container frame to stretch full width ---
             grid_frame = ctk.CTkFrame(self.overlay_btn_frame, fg_color="transparent")
             grid_frame.pack(fill="x", expand=True, pady=10, padx=5)
 
-            # --- FIX 2: Set proportional column configurations ---
-            grid_frame.columnconfigure(0, weight=2, minsize=140)  # Label column gets more breathing room
-            grid_frame.columnconfigure(1, weight=1, minsize=100)  # Start entry
-            grid_frame.columnconfigure(2, weight=1, minsize=100)  # End entry
+            grid_frame.columnconfigure(0, weight=2, minsize=140)
+            grid_frame.columnconfigure(1, weight=1, minsize=100)
+            grid_frame.columnconfigure(2, weight=1, minsize=100)
 
-            # --- HEADERS ---
             headers = ["Section Prefix", "Start Page", "End Page"]
             for col_idx, text in enumerate(headers):
-                # Align header 0 to the left (w), inputs to the center
                 anchor_dir = "w" if col_idx == 0 else "center"
                 lbl = ctk.CTkLabel(
                     grid_frame,
@@ -259,7 +272,6 @@ class BookAutomizerUI(ctk.CTk):
 
             entries = {}
             for row_idx, sec in enumerate(sections, start=1):
-                # --- FIX 3: Symmetrical, high-contrast labels next to inputs ---
                 lbl = ctk.CTkLabel(
                     grid_frame,
                     text=f"{sec} Section:",
@@ -277,7 +289,8 @@ class BookAutomizerUI(ctk.CTk):
 
                 entries[sec.lower()] = (ent_start, ent_end)
 
-            def submit_range_validation():
+            # --- CRITICAL FIX: The validation code and submit controls must be OUTSIDE the section loop ---
+            def submit_range_validation(event=None):
                 extracted_output = {}
                 try:
                     for sec_key, (start_w, end_w) in entries.items():
@@ -291,7 +304,12 @@ class BookAutomizerUI(ctk.CTk):
                 except ValueError as err:
                     self.log(f"[WARN] Input Verification Error: {str(err)}")
 
-            # Submit button centered below the inputs
+            # Bind the Enter key to all input fields in the range matrix grid
+            for ent_start, ent_end in entries.values():
+                ent_start.bind("<Return>", submit_range_validation)
+                ent_end.bind("<Return>", submit_range_validation)
+
+            # Draw the button once at the bottom after the grid has completely built
             btn_submit = ctk.CTkButton(
                 self.overlay_btn_frame,
                 text="Submit Section Ranges",
@@ -304,12 +322,15 @@ class BookAutomizerUI(ctk.CTk):
             )
             btn_submit.pack(pady=(12, 5))
 
+            # Block worker thread execution only AFTER all sections have successfully loaded inside the frame matrix
             self.checkpoint_event.wait()
             if self.is_canceling or self.current_dialog_response is not None:
                 return self.current_dialog_response
 
     def async_blocking_checkpoint(self, title, action_message):
         self.checkpoint_event.clear()
+        self.current_dialog_response = None
+
         self.overlay_title.configure(text=f"⚠️ Action Required: {title}", text_color="#E67E22")
         self.update_overlay_text(action_message)
 
@@ -319,6 +340,10 @@ class BookAutomizerUI(ctk.CTk):
         btn_confirm = ctk.CTkButton(self.overlay_btn_frame, text="I Have Completed This Step", width=220,
                                     fg_color="#2980B9", hover_color="#2471A3", command=self._release_checkpoint)
         btn_confirm.pack(side="left")
+
+        # FIX: Focus the button elements directly so standard OS event-loops allow
+        # pressing spacebar or Enter to instantly proceed WITHOUT breaking application-wide keymaps
+        btn_confirm.focus_set()
 
         self.log(f"[ACTION REQUIRED] {title} - Complete step in background.")
         self.checkpoint_event.wait()
@@ -343,7 +368,17 @@ class BookAutomizerUI(ctk.CTk):
         xl = self.excel_path.get()
 
         if not src_pdf or not tgt or not xl:
-            self.log("[ERROR] Missing configuration paths.")
+            self.log("[ERROR] Missing configuration paths. Fill out all source/target parameters.")
+            messagebox.showerror("Configuration Error", "Please fill out all file and folder fields before proceeding.")
+            return
+
+        is_valid, error_msg = validate_pdf_path(src_pdf)
+        if not is_valid:
+            self.log(f"[CRITICAL PATH ERROR] {error_msg}")
+            messagebox.showerror(
+                "Invalid PDF Source Path",
+                f"Validation failed:\n{error_msg}\n\nPlease check your input file path or try re-browsing for the file."
+            )
             return
 
         self.is_canceling = False
@@ -365,11 +400,28 @@ class BookAutomizerUI(ctk.CTk):
 
         try:
             # 1. Title Case Input Selection & Verification
-            eng_title = self.async_ask_string("Book Naming", "Enter book title in English:")
-            if not eng_title or self.is_canceling:
-                self.log("[ABORTED] Pipeline execution stopped.")
-                return
+            while True:
+                eng_title = self.async_ask_string("Book Naming", "Enter book title in English:")
 
+                # If user closes or hits cancel, abort the pipeline
+                if self.is_canceling or eng_title is None:
+                    self.log("[ABORTED] Pipeline execution stopped.")
+                    return
+
+                # FIX: Regex ensuring the string contains ONLY English characters (a-z, A-Z), numbers (0-9), and spaces
+                # it also checks that it isn't just an empty string of pure spaces
+                if eng_title.strip() != "" and re.match(r"^[a-zA-Z0-9 ]+$", eng_title):
+                    break  # Valid English input received, break the validation loop
+
+                # Warn the user and re-loop if invalid characters are passed
+                self.log(
+                    "[WARN] Invalid title syntax. Title must contain ONLY English characters (A-Z, a-z) or numbers (0-9).")
+                messagebox.showwarning(
+                    "Validation Error",
+                    "The book title must be written in English containing valid alphanumeric characters, and cannot be left blank."
+                )
+
+                # Continue with your existing case conversion selection logic...
             convert_case = self.async_ask_yes_no("Title Case Conversion", "Do you want to CONVERT this to Title Case?")
             if self.is_canceling: return
 
@@ -396,10 +448,6 @@ class BookAutomizerUI(ctk.CTk):
             )
             if self.is_canceling: return
 
-            checklist_msg = "1. Close the Excel tracking table\n2. Ensure the numeric JPG cover is in the source folder\n3. Ensure the JPG filename matches the DanaCode"
-            self.async_blocking_checkpoint("PRE-PROCESSING CHECKLIST", checklist_msg)
-            if self.is_canceling: return
-
             # 2. PDF Processing & Splits
             self.log("Back in process_pdf\nnow in setup_working_directory")
 
@@ -422,7 +470,7 @@ class BookAutomizerUI(ctk.CTk):
             if self.is_canceling: return
 
             # Backend worker processing
-            result = process_pdf()
+            result = process_pdf(ui=self)
             if result is None:
                 self.log("[ERROR] PDF Processing returned failure or aborted.")
                 return
