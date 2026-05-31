@@ -83,7 +83,9 @@ def create_book(file_src_url, title, description, design_config=None):
         "title": title,
         "description": description,
         "filePath": file_path_json_str,
-        "htmlTemplate": "Minimalist"
+        "htmlTemplate": "Minimalist",
+        "bLink": "my_link",
+        "folderId": "7398072"
     }
 
     # Goal 4: Apply design customizations (passed as a JSON string configuration)
