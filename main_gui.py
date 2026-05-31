@@ -25,7 +25,7 @@ class BookAutomizerUI(ctk.CTk):
 
         # Window Configuration
         self.title("YBZ Institute - PDF Book Automizer")
-        self.geometry("780x580")
+        self.geometry("780x640")
         self.resizable(False, False)
 
         # State Variables
@@ -75,16 +75,8 @@ class BookAutomizerUI(ctk.CTk):
                                           font=ctk.CTkFont(weight="bold", size=13))
         self.overlay_title.pack(pady=(8, 4), padx=15, anchor="w")
 
-        self.overlay_msg_box = ctk.CTkTextbox(
-            self.overlay_frame,
-            height=75,
-            fg_color="#1E1E1E",  # Match the exact color of self.overlay_frame
-            text_color="#FFFFFF",  # High-contrast white text for crystal clear visibility
-            activate_scrollbars=False,
-            wrap="word",
-            font=ctk.CTkFont(size=12)
-        )
-
+        self.overlay_msg_box = ctk.CTkTextbox(self.overlay_frame, height=75, fg_color="#1E1E1E", text_color="#FFFFFF",
+                                              activate_scrollbars=False, wrap="word", font=ctk.CTkFont(size=12))
         self.overlay_msg_box.pack(pady=(0, 5), padx=15, fill="x")
         self.overlay_msg_box.insert("1.0", "Start the operation pipeline to stream live checkpoints.")
         self.overlay_msg_box.configure(state="disabled")
@@ -130,15 +122,11 @@ class BookAutomizerUI(ctk.CTk):
         btn.grid(row=row_idx, column=2, padx=10, pady=8)
 
     def apply_universal_paste_bindings(self):
-        """תיקון בעיית ההדבקה ב-Windows כאשר המקלדת נמצאת במצב עברית."""
-
         def fallback_paste_handler(event):
             try:
                 cb_text = self.clipboard_get()
-                # בודק אם הווידג'ט הנוכחי בפוקוס תומך בהכנסת טקסט ומדביק אליו
                 if event.widget and hasattr(event.widget, 'insert'):
                     try:
-                        # מוחק טקסט מסומן אם קיים
                         event.widget.delete("sel.first", "sel.last")
                     except Exception:
                         pass
@@ -147,14 +135,12 @@ class BookAutomizerUI(ctk.CTk):
                 pass
             return "break"
 
-        # מאזין לצירופי מקשים של אנגלית (V קטנה וגדולה) ולצירוף הפיזי בעברית (Control + ה)
         self.bind_all("<Control-v>", fallback_paste_handler)
         self.bind_all("<Control-V>", fallback_paste_handler)
-        self.bind_all("<Control-hebrew_he>", fallback_paste_handler)  # מאזין לאות ה' בעברית
+        self.bind_all("<Control-hebrew_he>", fallback_paste_handler)
 
-        # גיבוי גלובלי נוסף המבוסס על ה-Keycode הפיזי של המקש (עובד בכל השפות ב-Windows)
         def global_key_checker(event):
-            if event.state & 0x0004 and event.keycode == 86:  # 86 זה קוד מקש V/ה, 0x0004 זה Control
+            if event.state & 0x0004 and event.keycode == 86:
                 return fallback_paste_handler(event)
 
         self.bind_all("<KeyPress>", global_key_checker)
@@ -231,6 +217,97 @@ class BookAutomizerUI(ctk.CTk):
                 return int(val.strip())
             self.log("[WARN] Non-integer detected. Re-prompting input variables...")
 
+    def async_ask_ranges(self, include_english=False):
+        """Displays an integrated matrix inside the overlay window to handle all numbers concurrently."""
+        while True:
+            self.checkpoint_event.clear()
+            self.overlay_title.configure(text="📊 Section Target Configuration Grid", text_color="#F1C40F")
+            self.update_overlay_text("Input start and end page numbers for each requested subsection split.")
+
+            for widget in self.overlay_btn_frame.winfo_children():
+                widget.pack_forget()
+
+            # --- FIX 1: Force the container frame to stretch full width ---
+            grid_frame = ctk.CTkFrame(self.overlay_btn_frame, fg_color="transparent")
+            grid_frame.pack(fill="x", expand=True, pady=10, padx=5)
+
+            # --- FIX 2: Set proportional column configurations ---
+            grid_frame.columnconfigure(0, weight=2, minsize=140)  # Label column gets more breathing room
+            grid_frame.columnconfigure(1, weight=1, minsize=100)  # Start entry
+            grid_frame.columnconfigure(2, weight=1, minsize=100)  # End entry
+
+            # --- HEADERS ---
+            headers = ["Section Prefix", "Start Page", "End Page"]
+            for col_idx, text in enumerate(headers):
+                # Align header 0 to the left (w), inputs to the center
+                anchor_dir = "w" if col_idx == 0 else "center"
+                lbl = ctk.CTkLabel(
+                    grid_frame,
+                    text=text,
+                    font=ctk.CTkFont(weight="bold", size=12),
+                    text_color="#AAAAAA",
+                    anchor=anchor_dir
+                )
+                if col_idx == 0:
+                    lbl.grid(row=0, column=col_idx, padx=10, pady=(0, 8), sticky="w")
+                else:
+                    lbl.grid(row=0, column=col_idx, padx=10, pady=(0, 8))
+
+            sections = ["CON", "PRE", "CHAP"]
+            if include_english:
+                sections.append("ENG")
+
+            entries = {}
+            for row_idx, sec in enumerate(sections, start=1):
+                # --- FIX 3: Symmetrical, high-contrast labels next to inputs ---
+                lbl = ctk.CTkLabel(
+                    grid_frame,
+                    text=f"{sec} Section:",
+                    anchor="w",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    text_color="#FFFFFF"
+                )
+                lbl.grid(row=row_idx, column=0, padx=10, pady=6, sticky="w")
+
+                ent_start = ctk.CTkEntry(grid_frame, width=90, placeholder_text="0", justify="center")
+                ent_start.grid(row=row_idx, column=1, padx=10, pady=6)
+
+                ent_end = ctk.CTkEntry(grid_frame, width=90, placeholder_text="0", justify="center")
+                ent_end.grid(row=row_idx, column=2, padx=10, pady=6)
+
+                entries[sec.lower()] = (ent_start, ent_end)
+
+            def submit_range_validation():
+                extracted_output = {}
+                try:
+                    for sec_key, (start_w, end_w) in entries.items():
+                        s_val, e_val = start_w.get().strip(), end_w.get().strip()
+                        if not s_val.isdigit() or not e_val.isdigit():
+                            raise ValueError(f"All values for {sec_key.upper()} must be valid positive integers.")
+                        extracted_output[f"{sec_key}_start"] = int(s_val)
+                        extracted_output[f"{sec_key}_end"] = int(e_val)
+
+                    self._resolve_async_dialog(extracted_output)
+                except ValueError as err:
+                    self.log(f"[WARN] Input Verification Error: {str(err)}")
+
+            # Submit button centered below the inputs
+            btn_submit = ctk.CTkButton(
+                self.overlay_btn_frame,
+                text="Submit Section Ranges",
+                width=240,
+                height=32,
+                font=ctk.CTkFont(weight="bold"),
+                fg_color="#2ECC71",
+                hover_color="#27AE60",
+                command=submit_range_validation
+            )
+            btn_submit.pack(pady=(12, 5))
+
+            self.checkpoint_event.wait()
+            if self.is_canceling or self.current_dialog_response is not None:
+                return self.current_dialog_response
+
     def async_blocking_checkpoint(self, title, action_message):
         self.checkpoint_event.clear()
         self.overlay_title.configure(text=f"⚠️ Action Required: {title}", text_color="#E67E22")
@@ -254,7 +331,6 @@ class BookAutomizerUI(ctk.CTk):
         self.checkpoint_event.set()
 
     def stop_process(self):
-        """מפסיק את התהליך וסוגר את ה-GUI מיד בלחיצה על כפתור העצירה."""
         self.is_canceling = True
         self.log("[SHUTDOWN] Stop execution request received. Closing automation manager program...")
         self._release_checkpoint()
@@ -333,27 +409,16 @@ class BookAutomizerUI(ctk.CTk):
             ranges = {}
             if extract_sections:
                 self.log(f"Created working file: {folder_name}_fin.pdf")
-                ranges['con_start'] = self.async_ask_int("CON Range", "Enter start page for CON:")
-                if self.is_canceling: return
-                ranges['con_end'] = self.async_ask_int("CON Range", "Enter end page for CON:")
-                if self.is_canceling: return
-                ranges['pre_start'] = self.async_ask_int("PRE Range", "Enter start page for PRE:")
-                if self.is_canceling: return
-                ranges['pre_end'] = self.async_ask_int("PRE Range", "Enter end page for PRE:")
-                if self.is_canceling: return
-                ranges['chap_start'] = self.async_ask_int("CHAP Range", "Enter start page for CHAP:")
-                if self.is_canceling: return
-                ranges['chap_end'] = self.async_ask_int("CHAP Range", "Enter end page for CHAP:")
+
+                # Check for an English section first to see if we should include ENG fields in our single window layout
+                has_english = self.async_ask_yes_no("English Section Check", "Does the book have an English section?")
                 if self.is_canceling: return
 
-                if self.async_ask_yes_no("English Section Check", "Does the book have an English section?"):
-                    if self.is_canceling: return
-                    ranges['eng_start'] = self.async_ask_int("ENG Range", "Enter start page for ENGLISH:")
-                    if self.is_canceling: return
-                    ranges['eng_end'] = self.async_ask_int("ENG Range", "Enter end page for ENGLISH:")
-                    if self.is_canceling: return
+                # Query all ranges concurrently inside one unified matrix layout frame
+                ranges = self.async_ask_ranges(include_english=has_english)
+                if self.is_canceling or not ranges: return
 
-            offset_val = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
+            offset_val: int | None = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
             if self.is_canceling: return
 
             # Backend worker processing
