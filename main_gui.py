@@ -25,14 +25,13 @@ class BookAutomizerUI(ctk.CTk):
 
         # Window Configuration
         self.title("YBZ Institute - PDF Book Automizer")
-        self.geometry("780x650")
+        self.geometry("780x580")
         self.resizable(False, False)
 
         # State Variables
         self.source_file = ctk.StringVar()
         self.target_dir = ctk.StringVar()
         self.excel_path = ctk.StringVar()
-        self.generated_folder_var = ctk.StringVar(value="[Run pipeline to generate]")
 
         # Asynchronous Flow Context Controls
         self.is_canceling = False
@@ -40,6 +39,7 @@ class BookAutomizerUI(ctk.CTk):
         self.current_dialog_response = None
 
         self.setup_ui()
+        self.apply_universal_paste_bindings()
 
     def setup_ui(self):
         # --- TITLE BANNER ---
@@ -67,24 +67,7 @@ class BookAutomizerUI(ctk.CTk):
         self.create_file_row("Excel Tracker File:", self.excel_path, self.browse_excel, 2)
         self.excel_path.set(str(BOOK_TRACKER_EXCEL_FILE_PATH))
 
-        # Copyable Generated Folder Name Row
-        lbl = ctk.CTkLabel(self.form_frame, text="Generated Folder Name:", anchor="w", width=150)
-        lbl.grid(row=3, column=0, padx=10, pady=10, sticky="w")
-
-        self.folder_entry = ctk.CTkEntry(
-            self.form_frame,
-            textvariable=self.generated_folder_var,
-            width=400,
-            fg_color="#2A2A2A",
-            state="readonly"
-        )
-        self.folder_entry.grid(row=3, column=1, padx=10, pady=10)
-
-        copy_btn = ctk.CTkButton(self.form_frame, text="Copy Text", width=80, command=self.copy_folder_to_clipboard)
-        copy_btn.grid(row=3, column=2, padx=10, pady=10)
-
         # --- LIVE INTERACTIVE OVERLAY PANEL ---
-        # This component replaces blocking system modal alerts so the Stop button stays alert
         self.overlay_frame = ctk.CTkFrame(self, fg_color="#1E1E1E", border_width=1, border_color="#333333")
         self.overlay_frame.pack(pady=10, padx=30, fill="x")
 
@@ -92,10 +75,19 @@ class BookAutomizerUI(ctk.CTk):
                                           font=ctk.CTkFont(weight="bold", size=13))
         self.overlay_title.pack(pady=(8, 4), padx=15, anchor="w")
 
-        self.overlay_msg = ctk.CTkLabel(self.overlay_frame,
-                                        text="Start the operation pipeline to stream live checkpoints.", justify="left",
-                                        anchor="w", font=ctk.CTkFont(size=12))
-        self.overlay_msg.pack(pady=(0, 8), padx=15, fill="x")
+        self.overlay_msg_box = ctk.CTkTextbox(
+            self.overlay_frame,
+            height=75,
+            fg_color="#1E1E1E",  # Match the exact color of self.overlay_frame
+            text_color="#FFFFFF",  # High-contrast white text for crystal clear visibility
+            activate_scrollbars=False,
+            wrap="word",
+            font=ctk.CTkFont(size=12)
+        )
+
+        self.overlay_msg_box.pack(pady=(0, 5), padx=15, fill="x")
+        self.overlay_msg_box.insert("1.0", "Start the operation pipeline to stream live checkpoints.")
+        self.overlay_msg_box.configure(state="disabled")
 
         self.overlay_btn_frame = ctk.CTkFrame(self.overlay_frame, fg_color="transparent")
         self.overlay_btn_frame.pack(pady=(0, 8), padx=15, fill="x")
@@ -123,17 +115,49 @@ class BookAutomizerUI(ctk.CTk):
         self.progress_bar.pack(side="right", pady=15)
 
         # --- LIVE LOGGING CONSOLE ---
-        self.log_box = ctk.CTkTextbox(self, height=130, width=720, font=ctk.CTkFont(family="Consolas", size=11))
+        self.log_box = ctk.CTkTextbox(self, height=120, width=720, font=ctk.CTkFont(family="Consolas", size=11))
         self.log_box.pack(pady=(5, 15), padx=30)
         self.log_box.configure(state="disabled")
 
     def create_file_row(self, label_text, text_var, browse_cmd, row_idx):
         lbl = ctk.CTkLabel(self.form_frame, text=label_text, anchor="w", width=150)
         lbl.grid(row=row_idx, column=0, padx=10, pady=8, sticky="w")
+
         entry = ctk.CTkEntry(self.form_frame, textvariable=text_var, width=400)
         entry.grid(row=row_idx, column=1, padx=10, pady=8)
+
         btn = ctk.CTkButton(self.form_frame, text="Browse", width=80, command=browse_cmd)
         btn.grid(row=row_idx, column=2, padx=10, pady=8)
+
+    def apply_universal_paste_bindings(self):
+        """תיקון בעיית ההדבקה ב-Windows כאשר המקלדת נמצאת במצב עברית."""
+
+        def fallback_paste_handler(event):
+            try:
+                cb_text = self.clipboard_get()
+                # בודק אם הווידג'ט הנוכחי בפוקוס תומך בהכנסת טקסט ומדביק אליו
+                if event.widget and hasattr(event.widget, 'insert'):
+                    try:
+                        # מוחק טקסט מסומן אם קיים
+                        event.widget.delete("sel.first", "sel.last")
+                    except Exception:
+                        pass
+                    event.widget.insert("insert", cb_text)
+            except Exception:
+                pass
+            return "break"
+
+        # מאזין לצירופי מקשים של אנגלית (V קטנה וגדולה) ולצירוף הפיזי בעברית (Control + ה)
+        self.bind_all("<Control-v>", fallback_paste_handler)
+        self.bind_all("<Control-V>", fallback_paste_handler)
+        self.bind_all("<Control-hebrew_he>", fallback_paste_handler)  # מאזין לאות ה' בעברית
+
+        # גיבוי גלובלי נוסף המבוסס על ה-Keycode הפיזי של המקש (עובד בכל השפות ב-Windows)
+        def global_key_checker(event):
+            if event.state & 0x0004 and event.keycode == 86:  # 86 זה קוד מקש V/ה, 0x0004 זה Control
+                return fallback_paste_handler(event)
+
+        self.bind_all("<KeyPress>", global_key_checker)
 
     def browse_source(self):
         path = ctk.filedialog.askopenfilename(title="Select Source PDF File", filetypes=[("PDF Files", "*.pdf")])
@@ -147,10 +171,11 @@ class BookAutomizerUI(ctk.CTk):
         path = ctk.filedialog.askopenfilename(title="Select Excel Tracker File", filetypes=[("Excel Files", "*.xlsx")])
         if path: self.excel_path.set(path)
 
-    def copy_folder_to_clipboard(self):
-        self.clipboard_clear()
-        self.clipboard_append(self.generated_folder_var.get())
-        self.log("[INFO] Folder name copied to clipboard!")
+    def update_overlay_text(self, text_string):
+        self.overlay_msg_box.configure(state="normal")
+        self.overlay_msg_box.delete("1.0", "end")
+        self.overlay_msg_box.insert("1.0", text_string)
+        self.overlay_msg_box.configure(state="disabled")
 
     def log(self, message):
         self.log_box.configure(state="normal")
@@ -163,9 +188,8 @@ class BookAutomizerUI(ctk.CTk):
     def async_ask_yes_no(self, title, message):
         self.checkpoint_event.clear()
         self.overlay_title.configure(text=f"❓ Setup Decision: {title}", text_color="#3498DB")
-        self.overlay_msg.configure(text=message)
+        self.update_overlay_text(message)
 
-        # Clear existing layout components inside the overlay button matrix
         for widget in self.overlay_btn_frame.winfo_children():
             widget.pack_forget()
 
@@ -182,7 +206,7 @@ class BookAutomizerUI(ctk.CTk):
     def async_ask_string(self, title, prompt):
         self.checkpoint_event.clear()
         self.overlay_title.configure(text=f"✏️ Input Required: {title}", text_color="#F1C40F")
-        self.overlay_msg.configure(text=prompt)
+        self.update_overlay_text(prompt)
 
         for widget in self.overlay_btn_frame.winfo_children():
             widget.pack_forget()
@@ -210,7 +234,7 @@ class BookAutomizerUI(ctk.CTk):
     def async_blocking_checkpoint(self, title, action_message):
         self.checkpoint_event.clear()
         self.overlay_title.configure(text=f"⚠️ Action Required: {title}", text_color="#E67E22")
-        self.overlay_msg.configure(text=action_message)
+        self.update_overlay_text(action_message)
 
         for widget in self.overlay_btn_frame.winfo_children():
             widget.pack_forget()
@@ -230,12 +254,12 @@ class BookAutomizerUI(ctk.CTk):
         self.checkpoint_event.set()
 
     def stop_process(self):
-        """Immediately flag cancellation and break threads waiting on user checkpoints."""
+        """מפסיק את התהליך וסוגר את ה-GUI מיד בלחיצה על כפתור העצירה."""
         self.is_canceling = True
-        self.log("[CANCELING] Cancel click registered. Freeing interface pipelines immediately...")
-        self.run_btn.configure(text="Canceling...", state="disabled")
-        # Instantly unblocks the background worker context if it was waiting on a checkpoint confirmation
+        self.log("[SHUTDOWN] Stop execution request received. Closing automation manager program...")
         self._release_checkpoint()
+        self.destroy()
+        sys.exit(0)
 
     def start_process(self):
         src_pdf = self.source_file.get()
@@ -280,8 +304,8 @@ class BookAutomizerUI(ctk.CTk):
                 display_title = eng_title
                 folder_name = eng_title.lower()
 
-            self.generated_folder_var.set(folder_name)
-            self.copy_folder_to_clipboard()
+            self.clipboard_clear()
+            self.clipboard_append(folder_name)
 
             self.log("-" * 30)
             self.log(f"Display Title: {display_title}")
@@ -292,7 +316,7 @@ class BookAutomizerUI(ctk.CTk):
 
             self.async_blocking_checkpoint(
                 "Rename Action Required",
-                f"Rename the book folder to: '{folder_name}'\n(This text is ready on your system clipboard!)"
+                f"Rename the book folder to: '{folder_name}'\n(This text has been automatically copied to your system clipboard!)"
             )
             if self.is_canceling: return
 
@@ -386,31 +410,26 @@ class BookAutomizerUI(ctk.CTk):
             self.log("[SUCCESS] Entire automation chain executed cleanly.")
 
             self.overlay_title.configure(text="Pipeline Complete", text_color="#2ECC71")
-            self.overlay_msg.configure(text="All automation cycles have wrapped successfully.")
+            self.update_overlay_text("All automation cycles have wrapped successfully.")
             messagebox.showinfo("Success", "Automation cycle completed successfully!")
 
         except Exception as e:
             self.log(f"[CRITICAL ERROR] Pipeline Interrupted: {str(e)}")
             self.overlay_title.configure(text="Pipeline Failed", text_color="#E74C3C")
-            self.overlay_msg.configure(text=f"Interrupted with error: {str(e)}")
+            self.update_overlay_text(f"Interrupted with error: {str(e)}")
 
         finally:
-            # Revert UI state safely
-            if self.is_canceling:
-                self.log("[ABORTED] Process safely torn down by user cancellation.")
-                self.overlay_title.configure(text="Pipeline Aborted", text_color="#E74C3C")
-                self.overlay_msg.configure(text="The user triggered an abort request. State changes reverted.")
+            if not self.is_canceling:
+                for widget in self.overlay_btn_frame.winfo_children():
+                    widget.pack_forget()
 
-            for widget in self.overlay_btn_frame.winfo_children():
-                widget.pack_forget()
-
-            self.run_btn.configure(
-                text="Start Automation Process",
-                fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
-                hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
-                state="normal",
-                command=self.start_process
-            )
+                self.run_btn.configure(
+                    text="Start Automation Process",
+                    fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"],
+                    hover_color=ctk.ThemeManager.theme["CTkButton"]["hover_color"],
+                    state="normal",
+                    command=self.start_process
+                )
 
 
 if __name__ == "__main__":
