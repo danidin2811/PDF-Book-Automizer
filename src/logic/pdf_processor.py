@@ -72,7 +72,7 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
 
         if dana_code:
             # Note: No emojis used in professional output
-            print_green(f"Successfully processed DanaCode: {dana_code}")
+            print(f"Successfully moved DanaCode: {dana_code}")
             return dana_code
 
         # Error handling with user feedback
@@ -82,65 +82,102 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
             print("Operation cancelled by user.")
             return None
 
+
 def run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=None):
     """
     Handles the physical file copying and section extraction logic.
+    Supports asynchronous GUI parameters context fallback to CLI operations.
     Returns True to continue, False to stop the main process.
     """
 
+    # 1. Determine if we skip extraction
     if ui is not None:
-        pass
+        # If the GUI context exists, check if user cancelled or unselected extraction
+        if ui.is_canceling:
+            return False, None
 
-    if not yes_or_no("Do you want to extract section PDFs? "):
-        return True, None
+        # We handle this logic before process_pdf via GUI screens,
+        # so if this function is hit, it means the user already clicked "Yes".
+        extract_sections = True
+
+    else: # Legacy Terminal Fallback behavior
+        extract_sections = yes_or_no("Do you want to extract section PDFs? ")
+        if not extract_sections:
+            return True, None
 
     fin_file_path = source_folder / f"{folder_name}_fin.pdf"
     book_title = source_folder.name
 
+    # 2. Duplicate PDF to Working Workspace
     copy_success = False
     while not copy_success:
         try:
             shutil.copy2(input_pdf_path, fin_file_path)
-            print_green(f"Created working file: {fin_file_path.name}")
+            print(f"Created working file: {fin_file_path.name}")  # Will route to GUI log box automatically
             copy_success = True
-
         except PermissionError:
-            print_red(f"Permission denied: {input_pdf_path.name} is locked.")
-            if not yes_or_no("Please close the PDF and try again? "):
-                return False, None
-
+            if ui is not None:
+                retry = ui.async_ask_yes_no("Permission Denied",
+                                            f"Permission denied: {input_pdf_path.name} is locked.\nPlease close the PDF. Retry?")
+                if ui.is_canceling or not retry:
+                    return False, None
+            else:
+                print_red(f"Permission denied: {input_pdf_path.name} is locked.")
+                if not yes_or_no("Please close the PDF and try again? "):
+                    return False, None
         except Exception as e:
-            print_red(f"Failed to create fin file: {e}")
+            print(f"Failed to create fin file: {e}")
             return False, None
 
     total_pages = get_pdf_page_count(fin_file_path)
     if not total_pages:
         return False, None
 
+    # 3. RANGE DICTIONARY POPULATION (GUI Matrix vs CLI Loops)
     ranges = {}
-    for sec in ['con', 'pre', 'chap']:
-        ranges[sec] = get_page_range_ui(sec, total_pages)
+    has_english = False
 
-    has_english = yes_or_no("Does the book have an English section? ")
-    if has_english:
-        ranges['english'] = get_page_range_ui('english', total_pages)
+    if ui is not None:
+        gui_ranges = getattr(ui, 'current_ranges_data', {})
 
-    # LOCAL RETRY LOOP for the extraction logic
+        # Restructure your GUI output dictionary to match what extract_pdf_sections expects
+        for sec in ['con', 'pre', 'chap']:
+            if f"{sec}_start" in gui_ranges:
+                ranges[sec] = (gui_ranges[f"{sec}_start"], gui_ranges[f"{sec}_end"])
+
+        if "eng_start" in gui_ranges:
+            has_english = True
+            ranges['english'] = (gui_ranges["eng_start"], gui_ranges["eng_end"])
+    else:
+        # --- LEGACY CLI LAYER POPULATION ---
+        for sec in ['con', 'pre', 'chap']:
+            ranges[sec] = get_page_range_ui(sec, total_pages)
+
+        has_english = yes_or_no("Does the book have an English section? ")
+        if has_english:
+            ranges['english'] = get_page_range_ui('english', total_pages)
+
+    # 4. EXECUTE EXTRACTION WORKFLOW RETRY LOOPS
     while True:
         success = extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
 
         if success:
             if has_english:
                 handle_english_section_logic(source_folder, folder_name)
-            break  # Exit retry loop
+            break  # Exit loop safely
 
-        if not yes_or_no("Extraction failed due to file lock. Retry? "):
-            return False, None
+        # Error Recovery Handling
+        if ui is not None:
+            retry = ui.async_ask_yes_no("Extraction Interrupted", "Extraction failed due to file lock. Retry?")
+            if ui.is_canceling or not retry:
+                return False, None
+        else:
+            if not yes_or_no("Extraction failed due to file lock. Retry? "):
+                return False, None
 
     con_file_path = source_folder / f"{book_title}_con.pdf"
-
     if con_file_path.exists():
-        print_green(f"Path captured: {con_file_path}")
+        print(f"Path captured: {con_file_path}")
 
     return True, con_file_path
 
@@ -198,13 +235,11 @@ def process_pdf(ui=None) -> Optional[tuple]:
         from utils.input_output_tools import wait_for_ready_signal
         wait_for_ready_signal(checklist_msg)
 
-    print("Back in process_pdf")
-
     if ui is not None:
         clean_path_str = ui.source_file.get().strip().strip('"').strip("'")
         input_pdf_path = Path(clean_path_str).resolve()
         source_folder = input_pdf_path.parent
-        folder_name = input_pdf_path.stem.strip().lower()
+        folder_name = source_folder.stem.strip().lower()
 
     else:
         input_pdf_path, source_folder, folder_name = setup_working_directory()

@@ -61,7 +61,6 @@ def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
                 dana_code = match.group(1)
                 try:
                     shutil.move(str(file_path), str(dest_dir / file_path.name))
-                    print(f"Moved DanaCode: {dana_code}")
                     return dana_code
                 except PermissionError:
                     print_red(f"File {file_path.name} is in use.")

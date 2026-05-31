@@ -49,6 +49,9 @@ class BookAutomizerUI(ctk.CTk):
         self.target_dir = ctk.StringVar()
         self.excel_path = ctk.StringVar()
 
+        self.current_ranges_data = {}
+        self.offset = 0
+
         # Asynchronous Flow Context Controls
         self.is_canceling = False
         self.checkpoint_event = threading.Event()
@@ -442,11 +445,24 @@ class BookAutomizerUI(ctk.CTk):
 
             if self.is_canceling: return
 
-            self.async_blocking_checkpoint(
-                "Rename Action Required",
-                f"Rename the book folder to: '{folder_name}'\n(This text has been automatically copied to your system clipboard!)"
-            )
-            if self.is_canceling: return
+            # --- DYNAMIC FOLDER NAME MATCH CHECK ---
+            # 1. Pull the raw string path given in the entry row and normalize it
+            raw_path_str = self.source_file.get().strip().strip('"').strip("'")
+            current_pdf_path = Path(raw_path_str).resolve()
+
+            # 2. Extract the parent folder name and match it against the targeted layout name
+            actual_parent_folder_name = current_pdf_path.parent.name.strip().lower()
+
+            if actual_parent_folder_name == folder_name:
+                self.log(
+                    f"[INFO] Folder matches target tracking layout name ('{folder_name}'). Skipping rename checkpoint step.")
+            else:
+                # If they do not match, proceed with requesting the manual folder modification step
+                self.async_blocking_checkpoint(
+                    "Rename Action Required",
+                    f"Rename the book folder to: '{folder_name}'\n(This text has been automatically copied to your system clipboard!)"
+                )
+                if self.is_canceling: return
 
             extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
             if self.is_canceling: return
@@ -461,7 +477,7 @@ class BookAutomizerUI(ctk.CTk):
                 ranges = self.async_ask_ranges(include_english=has_english)
                 if self.is_canceling or not ranges: return
 
-            offset_val: int | None = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
+            self.offset: int | None = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
             if self.is_canceling: return
 
             # Backend worker processing
