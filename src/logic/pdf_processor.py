@@ -201,9 +201,11 @@ def process_pdf(ui=None) -> Optional[tuple]:
     print("Back in process_pdf")
 
     if ui is not None:
-        input_pdf_path = Path(ui.source_file.get())
+        clean_path_str = ui.source_file.get().strip().strip('"').strip("'")
+        input_pdf_path = Path(clean_path_str).resolve()
         source_folder = input_pdf_path.parent
-        folder_name = input_pdf_path.stem.lower()
+        folder_name = input_pdf_path.stem.strip().lower()
+
     else:
         input_pdf_path, source_folder, folder_name = setup_working_directory()
 

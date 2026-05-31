@@ -448,16 +448,11 @@ class BookAutomizerUI(ctk.CTk):
             )
             if self.is_canceling: return
 
-            # 2. PDF Processing & Splits
-            self.log("Back in process_pdf\nnow in setup_working_directory")
-
             extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
             if self.is_canceling: return
 
             ranges = {}
             if extract_sections:
-                self.log(f"Created working file: {folder_name}_fin.pdf")
-
                 # Check for an English section first to see if we should include ENG fields in our single window layout
                 has_english = self.async_ask_yes_no("English Section Check", "Does the book have an English section?")
                 if self.is_canceling: return
