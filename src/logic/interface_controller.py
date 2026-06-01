@@ -1,8 +1,22 @@
+from utils.input_output_tools import get_all_page_ranges_cli
+
+
 class AppInterface:
     """Manages abstraction layers between CLI (Terminal) and GUI (CustomTkinter)."""
     def __init__(self, ui=None):
         self.ui = ui  # If None, the system dynamically defaults to CLI mode
         self.is_gui = ui is not None
+
+    @property
+    def is_canceling(self) -> bool:
+        """
+        Dynamically forwards the cancellation status check.
+        If running in GUI mode, tracks the actual window state.
+        Otherwise, defaults safely to False for CLI loops.
+        """
+        if self.is_gui and hasattr(self.ui, 'is_canceling'):
+            return self.ui.is_canceling
+        return False
 
     def ask_string(self, title: str, prompt: str) -> str | None:
         """Abstracts picking up a string from either UI overlays or the terminal console."""
@@ -55,3 +69,15 @@ class AppInterface:
             print(action_message)
             input("\nPress Enter once you have completed this step to continue... ")
             print("Proceeding...")
+
+    def request_all_page_ranges(self, sections: list, total_pages: int) -> dict:
+        """
+        Gathers valid page ranges for all specified sections at once.
+        Returns a dictionary mapping section name -> (start, end).
+        """
+        if self.is_gui and hasattr(self.ui, 'get_all_ranges_from_form'):
+            # The GUI can display a single window containing fields for all sections
+            return self.ui.get_all_ranges_from_form(sections, total_pages)
+
+        # Fallback for CLI loop
+        return get_all_page_ranges_cli(sections, total_pages, self)

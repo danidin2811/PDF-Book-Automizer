@@ -13,28 +13,30 @@ from src.logic.interface_controller import AppInterface
 from src.logic.file_operations import check_file_size, validate_pdf_path
 from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER, BOOK_TRACKER_EXCEL_FILE_PATH, COVERS_FOLDER
 from utils.norm_book_title import normalize_book_title, get_book_metadata
-from src.logic.pdf_processor import process_pdf, verify_and_rename_folder, run_cover_workflow
-from src.logic.file_operations import check_file_size
+from src.logic.pdf_processor import process_pdf, verify_and_rename_folder
 from src.logic.system_tools import clean_up_folder_after_processing
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.excel_tools import run_excel_update_workflow
 
 ctk.set_appearance_mode("System")
 
+
 class CustomStdoutStream:
     """Intercepts terminal print data signals and safely routes them to the interactive UI console box."""
+
     def __init__(self, ui_instance):
         self.ui = ui_instance
         self.terminal = sys.stdout
 
     def write(self, message):
-        self.terminal.write(message) # Keep printing to standard terminal output
+        self.terminal.write(message)  # Keep printing to standard terminal output
         if message.strip():
             # Thread-safe scheduling to append text messages to your logging box
             self.ui.after(0, lambda: self.ui.log(message.strip()))
 
     def flush(self):
         self.terminal.flush()
+
 
 class BookAutomizerUI(ctk.CTk):
     def __init__(self):
@@ -51,7 +53,6 @@ class BookAutomizerUI(ctk.CTk):
         self.excel_path = ctk.StringVar()
 
         self.current_ranges_data = {}
-        self.offset = 0
 
         # Asynchronous Flow Context Controls
         self.is_canceling = False
@@ -67,8 +68,6 @@ class BookAutomizerUI(ctk.CTk):
         """Forces the current active window thread to switch to the English keyboard layout."""
         if sys.platform == "win32":
             import ctypes
-            # 0x04090409 is the standard load identifier for English (US)
-            # 1 indicates that the layout should be activated immediately for the current thread
             try:
                 ctypes.windll.user32.ActivateKeyboardLayout(0x04090409, 1)
                 print("[SYSTEM] Keyboard layout successfully forced to English.")
@@ -155,7 +154,6 @@ class BookAutomizerUI(ctk.CTk):
         btn = ctk.CTkButton(self.form_frame, text="Browse", width=80, command=browse_cmd)
         btn.grid(row=row_idx, column=2, padx=10, pady=8)
 
-
     def browse_source(self):
         path = ctk.filedialog.askopenfilename(title="Select Source PDF File", filetypes=[("PDF Files", "*.pdf")])
         if path:
@@ -185,9 +183,9 @@ class BookAutomizerUI(ctk.CTk):
     # --- ASYNCHRONOUS UI SAFE POPUP WRAPPERS ---
     def async_ask_yes_no(self, title, message):
         self.checkpoint_event.clear()
-        self.current_dialog_response = None  # FIX: Reset stale state data
+        self.current_dialog_response = None
 
-        self.overlay_title.configure(text=f"❓ Setup Decision: {title}", text_color="#3498DB")
+        self.overlay_title.configure(text=f"❓ {title}", text_color="#3498DB")
         self.update_overlay_text(message)
 
         for widget in self.overlay_btn_frame.winfo_children():
@@ -217,7 +215,6 @@ class BookAutomizerUI(ctk.CTk):
         entry_val.pack(side="left", padx=(0, 10))
         entry_val.focus()
 
-        # Local element binding (This is perfectly clean and stays safe)
         entry_val.bind("<Return>", lambda event: self._resolve_async_dialog(entry_val.get()))
 
         btn_submit = ctk.CTkButton(self.overlay_btn_frame, text="Submit", width=100,
@@ -240,7 +237,7 @@ class BookAutomizerUI(ctk.CTk):
         """Displays an integrated matrix inside the overlay window to handle all numbers concurrently."""
         while True:
             self.checkpoint_event.clear()
-            self.current_dialog_response = None  # Reset stale state data
+            self.current_dialog_response = None
 
             self.overlay_title.configure(text="📊 Section Target Configuration Grid", text_color="#F1C40F")
             self.update_overlay_text("Input start and end page numbers for each requested subsection split.")
@@ -293,7 +290,6 @@ class BookAutomizerUI(ctk.CTk):
 
                 entries[sec.lower()] = (ent_start, ent_end)
 
-            # --- CRITICAL FIX: The validation code and submit controls must be OUTSIDE the section loop ---
             def submit_range_validation(event=None):
                 extracted_output = {}
                 try:
@@ -308,12 +304,10 @@ class BookAutomizerUI(ctk.CTk):
                 except ValueError as err:
                     self.log(f"[WARN] Input Verification Error: {str(err)}")
 
-            # Bind the Enter key to all input fields in the range matrix grid
             for ent_start, ent_end in entries.values():
                 ent_start.bind("<Return>", submit_range_validation)
                 ent_end.bind("<Return>", submit_range_validation)
 
-            # Draw the button once at the bottom after the grid has completely built
             btn_submit = ctk.CTkButton(
                 self.overlay_btn_frame,
                 text="Submit Section Ranges",
@@ -326,7 +320,6 @@ class BookAutomizerUI(ctk.CTk):
             )
             btn_submit.pack(pady=(12, 5))
 
-            # Block worker thread execution only AFTER all sections have successfully loaded inside the frame matrix
             self.checkpoint_event.wait()
             if self.is_canceling or self.current_dialog_response is not None:
                 return self.current_dialog_response
@@ -344,9 +337,6 @@ class BookAutomizerUI(ctk.CTk):
         btn_confirm = ctk.CTkButton(self.overlay_btn_frame, text="I Have Completed This Step", width=220,
                                     fg_color="#2980B9", hover_color="#2471A3", command=self._release_checkpoint)
         btn_confirm.pack(side="left")
-
-        # FIX: Focus the button elements directly so standard OS event-loops allow
-        # pressing spacebar or Enter to instantly proceed WITHOUT breaking application-wide keymaps
         btn_confirm.focus_set()
 
         self.log(f"[ACTION REQUIRED] {title} - Complete step in background.")
@@ -416,89 +406,72 @@ class BookAutomizerUI(ctk.CTk):
             current_pdf_path = Path(raw_path_str).resolve()
             source_folder = current_pdf_path.parent
 
-            # 3. Hand off the logic checking to the unified backend helper
+            # 3. Hand off logic verification to backend helper
             proceed = verify_and_rename_folder(source_folder, folder_name, interface)
             if self.is_canceling or not proceed:
                 return
 
-            run_cover_workflow(source_folder, COVERS_FOLDER, interface)
+            book_folder_path = None
+            fin_file_path = ''
+            book_row_index_in_table = 0
 
-            extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
-            if self.is_canceling: return
+            # Core processing loop adjusted for UI interface components
+            while book_folder_path is None:
+                if self.is_canceling:
+                    return
+                try:
+                    # FIX: replaced undefined 'input_pdf_path' with verified 'current_pdf_path'
+                    result = process_pdf(current_pdf_path, source_folder, folder_name, interface)
 
-            self.current_ranges_data = {}
+                    if result is None:
+                        retry = self.async_ask_yes_no("Error Encountered",
+                                                      "An error occurred during process_pdf. Would you like to retry?")
+                        if not retry or self.is_canceling:
+                            return
+                        continue
 
-            if extract_sections:
-                # Check for an English section first to see if we should include ENG fields in our single window layout
-                has_english = self.async_ask_yes_no("English Section Check", "Does the book have an English section?")
-                if self.is_canceling: return
+                    fin_file_path, book_folder_path, book_row_index_in_table = result
 
-                # Query all ranges concurrently inside one unified matrix layout frame
-                captured_ranges = self.async_ask_ranges(include_english=has_english)
-                if self.is_canceling or not captured_ranges: return
+                except Exception as e:
+                    self.log(f"[ERROR] Exception during PDF operations: {e}")
+                    retry = self.async_ask_yes_no("Unexpected Error", f"Unexpected execution error:\n{e}\n\nTry again?")
+                    if not retry or self.is_canceling:
+                        return
 
-                self.current_ranges_data = captured_ranges
+            # FIX: Replaced obsolete CLI blocking hooks with self.async_blocking_checkpoint UI modules
+            self.async_blocking_checkpoint(
+                "TOC Verification",
+                "The PDF file has been processed and the TOC has been appended.\n\n"
+                "MANUAL INSPECTION REQUIRED:\n"
+                "Open the updated PDF and verify all levels, page numbers, and titles in the bookmarks tab."
+            )
 
-            offset_val = self.async_ask_int("Page Offset Management", "Please enter the amount of offset pages:")
-            self.offset = offset_val if offset_val is not None else 0
-            if self.is_canceling: return
+            self.async_blocking_checkpoint(
+                "Cover Modifications",
+                "MANUAL ACTION REQUIRED:\n"
+                "TOC inspection complete. Please insert front and back covers into your file matching design targets."
+            )
 
-            # Backend worker processing
-            result = process_pdf(ui=self)
-            if result is None:
-                self.log("[ERROR] PDF Processing returned failure or aborted.")
-                return
+            self.async_blocking_checkpoint(
+                "Clean Empty Bookmarks",
+                "MANUAL ACTION REQUIRED:\n"
+                "Before finalizing execution, verify and clean out all remaining 'Blank Page' bookmark flags created during compilation."
+            )
 
-            fin_file_path, book_folder_path, book_row_index_in_table = result
-            self.progress_bar.set(0.4)
-            if self.is_canceling: return
-
-            gemini_msg = f"1. A new Gemini chat has been opened\n2. Drag the file: {folder_name}_con.pdf\n3. Paste the prompt\n4. Save CSV as 'toc.csv'"
-            self.async_blocking_checkpoint("Gemini Transcription", gemini_msg)
-            if self.is_canceling: return
-
-            self.log("Back to add_toc_to_pdf\nTOC applied successfully.")
-            self.progress_bar.set(0.55)
-
-            self.async_blocking_checkpoint("MANUAL INSPECTION REQUIRED", "Verify bookmarks tab in Adobe Acrobat.")
-            if self.is_canceling: return
-
-            self.async_blocking_checkpoint("MANUAL ACTION REQUIRED", "Add front and back covers as needed.")
-            if self.is_canceling: return
-
-            self.async_blocking_checkpoint("MANUAL ACTION REQUIRED", "Remove 'Blank Page' bookmarks.")
-            if self.is_canceling: return
-
-            # 3. File System Checks
+            # 4. Final Processing & File updates
             check_file_size(fin_file_path)
-            self.progress_bar.set(0.7)
-            if self.is_canceling: return
-
-            # 4. Folder Asset Cleanups
-            self.async_blocking_checkpoint("Close Applications", "Close Adobe Acrobat and Excel.")
-            if self.is_canceling: return
 
             folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path))
-            self.progress_bar.set(0.8)
-            if self.is_canceling: return
 
-            # 5. Selenium Browser Automation Layer
-            is_hebrew = self.async_ask_yes_no("Language Profiling", "Is the book in Hebrew?")
-            if self.is_canceling: return
+            # FIX: Changed undefined 'book_titles' reference to loaded 'book_metadata' dictionary values
+            fliphtml5_automation(folder_in_amazon, book_metadata['display_title'], book_row_index_in_table)
 
-            fliphtml5_automation(folder_in_amazon, display_title, book_row_index_in_table)
-            self.progress_bar.set(0.95)
-            if self.is_canceling: return
-
-            # 6. Database Serialization
-            run_excel_update_workflow(book_row_index_in_table, folder_name)
+            run_excel_update_workflow(book_row_index_in_table, book_metadata['folder_name'])
 
             self.progress_bar.set(1.0)
-            self.log("[SUCCESS] Entire automation chain executed cleanly.")
-
-            self.overlay_title.configure(text="Pipeline Complete", text_color="#2ECC71")
-            self.update_overlay_text("All automation cycles have wrapped successfully.")
-            messagebox.showinfo("Success", "Automation cycle completed successfully!")
+            self.log("[SUCCESS] Workflow complete!")
+            self.overlay_title.configure(text="Pipeline Completed", text_color="#2ECC71")
+            self.update_overlay_text("All automated pipeline processing targets finished flawlessly.")
 
         except Exception as e:
             self.log(f"[CRITICAL ERROR] Pipeline Interrupted: {str(e)}")

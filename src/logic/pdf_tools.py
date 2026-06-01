@@ -4,6 +4,7 @@ from typing import Optional, Dict, Tuple
 from PyPDF2 import PdfReader, PdfWriter
 import os
 
+from src.logic.interface_controller import AppInterface
 from utils.input_output_tools import print_red, print_green
 
 
@@ -119,7 +120,7 @@ def reverse_pdf_pages(input_path: Path) -> bool:
         return False
 
 
-def get_pdf_page_count(file_path: Path) -> Optional[int]:
+def get_pdf_page_count(file_path: Path, interface: AppInterface) -> Optional[int]:
     """
     Returns the total number of pages in a PDF file.
     """
@@ -129,15 +130,15 @@ def get_pdf_page_count(file_path: Path) -> Optional[int]:
             return len(PdfReader(pdf_file).pages)
 
     except (FileNotFoundError, PermissionError) as e:
-        logging.error(f"Access error for {file_path.name}: {e}")
+        interface.print_error(f"Access error for {file_path.name}: {e}")
         return None
 
     except Exception as e:
-        logging.error(f"Unexpected error reading PDF: {e}")
+        interface.print_error(f"Unexpected error reading PDF: {e}")
         return None
 
 
-def extract_pdf_sections(book_title: str, source_path: Path, ranges: Dict[str, Tuple[int, int]], output_dir: Path):
+def extract_pdf_sections(book_title: str, source_path: Path, ranges: Dict[str, Tuple[int, int]], output_dir: Path, interface: AppInterface):
     """
     Core logic to slice a PDF into multiple section files.
     """
@@ -161,15 +162,15 @@ def extract_pdf_sections(book_title: str, source_path: Path, ranges: Dict[str, T
         return True
 
     except PermissionError:
-        print_red(f"\n[!] Access Denied: A required PDF file is open in another program.")
+        interface.print_error(f"\n[!] Access Denied: A required PDF file is open in another program.")
         return False
 
     except Exception as e:
-        print_red(f"\n[!] Extraction Error: {e}")
+        interface.print_error(f"\n[!] Extraction Error: {e}")
         return False
 
 
-def handle_english_section_logic(source_folder: Path, folder_name: str) -> bool:
+def handle_english_section_logic(source_folder: Path, folder_name: str, interface: AppInterface) -> bool:
     """
     Handles the post-extraction logic for the English section:
     Reverses the pages and renames the file to the official format.
@@ -177,7 +178,7 @@ def handle_english_section_logic(source_folder: Path, folder_name: str) -> bool:
     temp_eng_file = source_folder / f"{folder_name}.pdf"
 
     if not temp_eng_file.exists():
-        logging.error(f"English extraction failed: {temp_eng_file} not found.")
+        interface.print_error(f"English extraction failed: {temp_eng_file} not found.")
         return False
 
     # Perform reversal
@@ -187,7 +188,7 @@ def handle_english_section_logic(source_folder: Path, folder_name: str) -> bool:
             return True
 
         except Exception as e:
-            logging.error(f"Error during English file cleanup: {e}")
+            interface.print_error(f"Error during English file cleanup: {e}")
             return False
 
     return False

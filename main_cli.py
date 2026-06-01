@@ -1,5 +1,3 @@
-import pyperclip
-
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
@@ -13,7 +11,7 @@ def main():
     interface = AppInterface(ui=None)
 
     # 1. Run setup checks to pull down paths
-    input_pdf_path, source_folder, folder_name = setup_working_directory(interface)
+    input_pdf_path, source_folder = setup_working_directory(interface)
     if input_pdf_path is None:
         return
 

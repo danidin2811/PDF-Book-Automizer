@@ -94,17 +94,15 @@ def get_input_pdf_path(interface: AppInterface) -> Path | None:
         interface.print_error(error_message)
         prompt = "Please try again. Drag and drop the PDF file and press Enter:"
 
-def setup_working_directory(interface: AppInterface) -> tuple[Path, Path, str]:
+def setup_working_directory(interface: AppInterface) -> tuple[Path, Path]:
     """
         Prompts for the PDF path and derives the folder context.
         Returns: (input_pdf_path, source_folder, folder_name)
     """
-    print("now in setup_working_directory")
     input_pdf_path = get_input_pdf_path(interface)
     source_folder = input_pdf_path.parent  # get the source folder of the PDF file
-    folder_name = str(source_folder.name)
 
-    return input_pdf_path, source_folder, folder_name
+    return input_pdf_path, source_folder
 
 def run_cover_workflow(source_folder: Path, destination_folder: Path, interface) -> Optional[str]:
     """
@@ -142,32 +140,21 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path, interface)
         # Error handling with user feedback
         print_red(f"Error: No numeric JPG found in {source_folder.name}")
 
-        if not yes_or_no("Would you like to try again? (y/n): "):
+        if not interface.ask_yes_no("Try Again?", "Would you like to try again? (y/n): "):
             print("Operation cancelled by user.")
             return None
 
 
-def run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=None):
+def run_extraction_workflow(input_pdf_path, source_folder, folder_name, interface):
     """
     Handles the physical file copying and section extraction logic.
     Supports asynchronous GUI parameters context fallback to CLI operations.
     Returns True to continue, False to stop the main process.
     """
 
-    # 1. Determine if we skip extraction
-    if ui is not None:
-        # If the GUI context exists, check if user cancelled or unselected extraction
-        if ui.is_canceling:
-            return False, None
-
-        # We handle this logic before process_pdf via GUI screens,
-        # so if this function is hit, it means the user already clicked "Yes".
-        extract_sections = True
-
-    else: # Legacy Terminal Fallback behavior
-        extract_sections = yes_or_no("Do you want to extract section PDFs? ")
-        if not extract_sections:
-            return True, None
+    extract_sections = interface.ask_yes_no("Extract Sections", "Do you want to extract section PDFs? ")
+    if not extract_sections:
+        return True, None
 
     fin_file_path = source_folder / f"{folder_name}_fin.pdf"
     book_title = source_folder.name
@@ -177,105 +164,106 @@ def run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=None)
     while not copy_success:
         try:
             shutil.copy2(input_pdf_path, fin_file_path)
-            print(f"Created working file: {fin_file_path.name}")  # Will route to GUI log box automatically
+            interface.print_info("Successfully created _fin file", f"Created working file: {fin_file_path.name}")
             copy_success = True
         except PermissionError:
-            if ui is not None:
-                retry = ui.async_ask_yes_no("Permission Denied",
-                                            f"Permission denied: {input_pdf_path.name} is locked.\nPlease close the PDF. Retry?")
-                if ui.is_canceling or not retry:
-                    return False, None
+            retry = interface.ask_yes_no("Permission Denied", f"Permission denied: {input_pdf_path.name} is locked.\nPlease close the PDF. Retry? ")
+            if not retry:
+                return False, None
+
             else:
-                print_red(f"Permission denied: {input_pdf_path.name} is locked.")
-                if not yes_or_no("Please close the PDF and try again? "):
+                interface.print_error(f"Permission denied: {input_pdf_path.name} is locked.")
+                if not interface.ask_yes_no("File Open", "Do you want to try to close the PDF file and try again? "):
                     return False, None
         except Exception as e:
-            print(f"Failed to create fin file: {e}")
+            interface.print_error(f"Failed to create fin file: {e}")
             return False, None
 
-    total_pages = get_pdf_page_count(fin_file_path)
+    total_pages = get_pdf_page_count(fin_file_path, interface)
     if not total_pages:
         return False, None
 
-    # 3. RANGE DICTIONARY POPULATION (GUI Matrix vs CLI Loops)
-    ranges = {}
-    has_english = False
+    sections = ['con', 'pre', 'chap']
 
-    if ui is not None:
-        gui_ranges = getattr(ui, 'current_ranges_data', {})
+    has_english = interface.ask_yes_no("Language Check", "Does the book have an English section?")
+    if has_english:
+        sections.append('english')
 
-        # Restructure your GUI output dictionary to match what extract_pdf_sections expects
-        for sec in ['con', 'pre', 'chap']:
-            if f"{sec}_start" in gui_ranges:
-                ranges[sec] = (gui_ranges[f"{sec}_start"], gui_ranges[f"{sec}_end"])
+    ranges = interface.request_all_page_ranges(sections, total_pages)
 
-        if "eng_start" in gui_ranges:
-            has_english = True
-            ranges['english'] = (gui_ranges["eng_start"], gui_ranges["eng_end"])
-    else:
-        # --- LEGACY CLI LAYER POPULATION ---
-        for sec in ['con', 'pre', 'chap']:
-            ranges[sec] = get_page_range_ui(sec, total_pages)
+    if not ranges or interface.is_canceling:
+        interface.print_error("Configuration aborted by user when asking for ranges.")
+        return False
 
-        has_english = yes_or_no("Does the book have an English section? ")
-        if has_english:
-            ranges['english'] = get_page_range_ui('english', total_pages)
-
-    # 4. EXECUTE EXTRACTION WORKFLOW RETRY LOOPS
     while True:
-        success = extract_pdf_sections(book_title, fin_file_path, ranges, source_folder)
+        success = extract_pdf_sections(book_title, fin_file_path, ranges, source_folder, interface)
 
         if success:
             if has_english:
-                handle_english_section_logic(source_folder, folder_name)
+                handle_english_section_logic(source_folder, folder_name, interface)
             break  # Exit loop safely
 
         # Error Recovery Handling
-        if ui is not None:
-            retry = ui.async_ask_yes_no("Extraction Interrupted", "Extraction failed due to file lock. Retry?")
-            if ui.is_canceling or not retry:
-                return False, None
-        else:
-            if not yes_or_no("Extraction failed due to file lock. Retry? "):
-                return False, None
+        if not interface.ask_yes_no("File Lock Error", "Extraction failed due to file lock. Retry?"):
+            return False, None
 
     con_file_path = source_folder / f"{book_title}_con.pdf"
     if con_file_path.exists():
-        print(f"Path captured: {con_file_path}")
+        interface.print_info(f"Path captured: {con_file_path}")
 
     return True, con_file_path
 
-def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, ui) -> bool:
-    """
-        Handles TOC transcription and applies bookmarks with a local retry loop.
-        Returns True if successful, False if the user chooses to skip/cancel.
-    """
 
-    print_green(f"Ready for transcription: {con_file_path.name}")
+def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, interface) -> bool:
+    """
+    Handles TOC transcription and applies bookmarks with a local retry loop.
+    Returns True if successful, False if the user chooses to skip/cancel or hits abort.
+    """
+    import os
+    from pathlib import Path
 
-    handle_gemini_toc_transcription(source_folder, con_file_path, ui)
-    print("Back to add_toc_to_pdf")
+    interface.print_green(f"Ready for transcription: {con_file_path.name}")
+
+    # Pass the unified interface context down down the line
+    handle_gemini_toc_transcription(source_folder, con_file_path, interface)
+    interface.print_info("Back to add_toc_to_pdf")
+
     csv_path = os.path.join(source_folder, "toc.csv")
     output_pdf_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
 
     toc_entries = None
 
     while not toc_entries:
+        # Check if the user initiated an app abort via the GUI window interface
+        if interface.is_canceling:
+            interface.print_error("Operation canceled by user.")
+            return False
+
         toc_entries = process_toc_extraction(csv_path)
 
         if not toc_entries:
-            if not yes_or_no("TOC entries are missing/invalid. Fix the CSV and try again? "):
+            # Route confirmation prompting dynamically through the interface helper methods
+            retry = interface.confirm_choice("TOC entries are missing/invalid. Fix the CSV and try again?") if hasattr(
+                interface, 'confirm_choice') else yes_or_no(
+                "TOC entries are missing/invalid. Fix the CSV and try again? ")
+            if not retry:
                 return False
 
     while True:
+        if interface.is_canceling:
+            interface.print_error("Operation canceled by user.")
+            return False
+
         success = append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries)
 
         if success:
-            print_green("TOC applied successfully.")
+            interface.print_green("TOC applied successfully.")
             return True
 
-        print_red("\n[!] TOC Append Failed (Check if PDF is open in Acrobat).")
-        if not yes_or_no("Fix the issue and retry writing bookmarks? "):
+        interface.print_error("\n[!] TOC Append Failed (Check if PDF is open in Acrobat).")
+
+        retry_write = interface.confirm_choice("Fix the issue and retry writing bookmarks?") if hasattr(interface,'confirm_choice') else yes_or_no("Fix the issue and retry writing bookmarks? ")
+        if not retry_write:
             return False
 
 def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Optional[tuple]:
@@ -294,29 +282,22 @@ def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Option
     success, row_index = find_danacode_row(danacode)
 
     while not success:
-        print_red(f"Error: DanaCode '{danacode}' not found or Excel is locked.")
+        interface.print_error(f"Error: DanaCode '{danacode}' not found or Excel is locked.")
 
-        if ui is not None:
-            retry = ui.async_ask_yes_no("Excel Table Missing Record", "Would you like to fix the Excel and try again?")
-            if ui.is_canceling or not retry:
-                print("User cancelled or closed application pipeline context. Exiting process.")
-                return None
-        else:
-            if not yes_or_no("Would you like to fix the Excel and try again? "):
-                print("User cancelled. Exiting process.")
-                return None
+        if not interface.ask_yes_no("Try Again?", "Would you like to fix the Excel and try again? "):
+            interface.print_info("User cancelled", "Exiting process.")
 
         success, row_index = find_danacode_row(danacode)
 
-        print_green(f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
+        interface.print_info("Danacode found", f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
 
-    success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name, ui=ui)
+    success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name, interface)
     if not success:
         print_red("Extraction workflow failed.")
         return None
 
     if con_file_path:
-        add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, ui=ui)
+        add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, interface)
 
     fin_file_path = os.path.join(source_folder, f"{Path(folder_name).stem}_fin.pdf")
 

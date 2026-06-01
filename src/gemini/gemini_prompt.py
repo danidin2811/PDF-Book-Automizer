@@ -15,7 +15,7 @@ def load_gemini_prompt() -> str:
         print_red(f"Warning: Prompt file not found at {prompt_path}")
         return "Please transcribe the attached Table of Contents to CSV."
 
-def handle_gemini_toc_transcription(source_folder, con_file_path, ui=None):
+def handle_gemini_toc_transcription(source_folder, con_file_path, interface):
     """
     Copies the transcription prompt to clipboard and opens the Gemini URL.
     Supports skipping terminal prompts if GUI context handles the offset value.
@@ -23,30 +23,34 @@ def handle_gemini_toc_transcription(source_folder, con_file_path, ui=None):
     import webbrowser
     import pyperclip
     import os
-    from utils.input_output_tools import wait_for_ready_signal, ask_offset
+    from utils.input_output_tools import wait_for_ready_signal
 
     # --- CHOOSE BETWEEN GUI PARAMETERS AND CLI PROMPTS ---
-    if ui is not None:
-        offset = getattr(ui, 'offset', 0)
-        print(f"[ENGINE] Applying page offset directly from GUI context: {offset}")
-    else:
-        offset = ask_offset()
+    offset = ask_offset(interface)
 
     raw_prompt = load_gemini_prompt()
     formatted_prompt = raw_prompt.format(offset=offset)
-    pyperclip.copy(formatted_prompt) # Copy prompt to clipboard for easy pasting
+    pyperclip.copy(formatted_prompt)  # Copy prompt to clipboard for easy pasting
 
-    print(f"Prompt copied to clipboard. Opening Gemini...")
-    print(f"File to upload: {con_file_path}")
+    interface.print_info(f"Prompt copied to clipboard. Opening Gemini...")
+    interface.print_info(f"File to upload: {con_file_path}")
 
     # Open Gemini in the default browser
     webbrowser.open("https://gemini.google.com/app")
 
-    print(f"# Open the folder so you can drag the file easily {source_folder}")
+    interface.print_info(f"# Open the folder so you can drag the file easily {source_folder}")
     os.startfile(source_folder)
 
-    # Only show the legacy terminal blocking signal if we are NOT running the GUI layer
-    if ui is None:
+    # Use the interface layer to determine blocking rules
+    if interface.is_gui:
+        # If running inside a GUI background thread, leverage a checklist step or signal event
+        if hasattr(interface, 'request_step_completion'):
+            interface.request_step_completion(
+                step_name="Gemini Transcription",
+                message=f"Please drop {os.path.basename(con_file_path)} into Gemini, run prompt, and save 'toc.csv' to the book folder."
+            )
+    else:
+        # Standard legacy terminal blocking signal for CLI
         instructions = (
             f"\nACTION REQUIRED: Gemini Transcription\n"
             f"--------------------------------------\n"
