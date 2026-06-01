@@ -11,9 +11,9 @@ from src.logic.interface_controller import AppInterface
 
 # --- BACKEND MODULE IMPORTS ---
 from src.logic.file_operations import check_file_size, validate_pdf_path
-from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER, BOOK_TRACKER_EXCEL_FILE_PATH
+from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER, BOOK_TRACKER_EXCEL_FILE_PATH, COVERS_FOLDER
 from utils.norm_book_title import normalize_book_title, get_book_metadata
-from src.logic.pdf_processor import process_pdf, verify_and_rename_folder
+from src.logic.pdf_processor import process_pdf, verify_and_rename_folder, run_cover_workflow
 from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
@@ -420,6 +420,8 @@ class BookAutomizerUI(ctk.CTk):
             proceed = verify_and_rename_folder(source_folder, folder_name, interface)
             if self.is_canceling or not proceed:
                 return
+
+            run_cover_workflow(source_folder, COVERS_FOLDER, interface)
 
             extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
             if self.is_canceling: return

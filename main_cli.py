@@ -13,7 +13,7 @@ def main():
     interface = AppInterface(ui=None)
 
     # 1. Run setup checks to pull down paths
-    input_pdf_path, source_folder, folder_name_placeholder = setup_working_directory(interface)
+    input_pdf_path, source_folder, folder_name = setup_working_directory(interface)
     if input_pdf_path is None:
         return
 
@@ -21,10 +21,10 @@ def main():
     book_titles = normalize_book_title(interface)
 
     if book_titles:
-        target_folder_name = book_titles['folder_name']
+        folder_name = book_titles['folder_name']
 
         # 3. Hand off to the exact same logic processor!
-        verify_and_rename_folder(source_folder, target_folder_name, interface)
+        verify_and_rename_folder(source_folder, folder_name, interface)
 
     book_folder_path = None
     fin_file_path = ''

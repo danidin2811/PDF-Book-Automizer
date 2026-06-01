@@ -106,7 +106,7 @@ def setup_working_directory(interface: AppInterface) -> tuple[Path, Path, str]:
 
     return input_pdf_path, source_folder, folder_name
 
-def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optional[str]:
+def run_cover_workflow(source_folder: Path, destination_folder: Path, interface) -> Optional[str]:
     """
     Orchestrates the movement of a book cover JPG based on its DanaCode.
 
@@ -121,6 +121,14 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path) -> Optiona
         Optional[str]: The extracted DanaCode string if successful;
                       None if the user chooses to cancel.
     """
+
+    checklist_msg = (
+        "1. Close the Excel tracking table\n"
+        "2. Ensure the numeric JPG cover is in the source folder\n"
+        "3. Ensure the JPG filename matches the DanaCode\n\n"
+    )
+
+    interface.ask_checkpoint("Complete Checklist", checklist_msg)
 
     while True:
         # Attempt the silent logic operation
@@ -277,15 +285,7 @@ def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Option
     Fallback to traditional CLI prompts if no UI context is supplied.
     """
 
-    checklist_msg = (
-        "1. Close the Excel tracking table\n"
-        "2. Ensure the numeric JPG cover is in the source folder\n"
-        "3. Ensure the JPG filename matches the DanaCode\n\n"
-    )
-
-    interface.ask_checkpoint("Complete Checklist", checklist_msg)
-
-    danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
+    danacode = run_cover_workflow(source_folder, COVERS_FOLDER, interface)
 
     if not danacode:
         print_red("Process halted: Cover error.")
