@@ -8,7 +8,7 @@ from src.logic.interface_controller import AppInterface
 from utils.input_output_tools import print_red, print_green
 
 
-def append_to_existing_toc(input_pdf_path, output_pdf_path, new_toc_entries):
+def append_to_existing_toc(input_pdf_path, output_pdf_path, new_toc_entries, interface:AppInterface):
     """
     Clones existing PDF bookmarks and appends new ones.
     Returns True on success, False on failure to prevent script crash.
@@ -67,7 +67,7 @@ def append_to_existing_toc(input_pdf_path, output_pdf_path, new_toc_entries):
         with open(output_pdf_path, "wb") as f:
             writer.write(f)
 
-        print_green(f"Successfully wrote TOC to: {output_pdf_path}")
+        interface.print_success(f"Successfully wrote TOC to: {output_pdf_path}")
         return True
 
     except PermissionError:
@@ -79,7 +79,7 @@ def append_to_existing_toc(input_pdf_path, output_pdf_path, new_toc_entries):
         return False
 
 
-def reverse_pdf_pages(input_path: Path) -> bool:
+def reverse_pdf_pages(input_path: Path, interface:AppInterface) -> bool:
     """
     Reverses the page order of a PDF and saves it with an '_eng' suffix.
 
@@ -108,7 +108,7 @@ def reverse_pdf_pages(input_path: Path) -> bool:
         with open(output_path, "wb") as output_pdf:
             writer.write(output_pdf)
 
-        logging.info(f"Successfully reversed: {output_path.name}")
+        interface.print_success(f"Successfully reversed: {output_path.name}")
         return True
 
     except (FileNotFoundError, PermissionError) as e:
@@ -182,7 +182,7 @@ def handle_english_section_logic(source_folder: Path, folder_name: str, interfac
         return False
 
     # Perform reversal
-    if reverse_pdf_pages(temp_eng_file):
+    if reverse_pdf_pages(temp_eng_file,interface):
         try:
             os.remove(temp_eng_file)
             return True

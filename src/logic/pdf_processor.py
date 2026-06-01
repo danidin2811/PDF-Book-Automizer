@@ -31,8 +31,7 @@ def verify_and_rename_folder(source_folder: Path, target_folder_name: str, inter
 
     if actual_parent_name == target_folder_name.strip().lower():
         # Using print_info or a clean log router so it prints cleanly to Terminal or UI Log Box
-        interface.print_info("System Check",
-                             f"Folder matches target tracking layout name ('{target_folder_name}'). Skipping rename checkpoint.")
+        interface.print_info(f"Folder matches target tracking layout name ('{target_folder_name}'). Skipping rename checkpoint.")
         return True
 
     # 2. If they do not match, proceed with the system clipboard action
@@ -130,7 +129,7 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path, interface)
 
     while True:
         # Attempt the silent logic operation
-        dana_code = move_cover_image(source_folder, destination_folder)
+        dana_code = move_cover_image(source_folder, destination_folder, interface)
 
         if dana_code:
             # Note: No emojis used in professional output
@@ -140,7 +139,7 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path, interface)
         # Error handling with user feedback
         print_red(f"Error: No numeric JPG found in {source_folder.name}")
 
-        if not interface.ask_yes_no("Try Again?", "Would you like to try again? (y/n): "):
+        if not interface.ask_yes_no("Try Again?", "Would you like to try again?: "):
             print("Operation cancelled by user.")
             return None
 
@@ -164,7 +163,7 @@ def run_extraction_workflow(input_pdf_path, source_folder, folder_name, interfac
     while not copy_success:
         try:
             shutil.copy2(input_pdf_path, fin_file_path)
-            interface.print_info("Successfully created _fin file", f"Created working file: {fin_file_path.name}")
+            interface.print_info(f"Created working file: {fin_file_path.name}")
             copy_success = True
         except PermissionError:
             retry = interface.ask_yes_no("Permission Denied", f"Permission denied: {input_pdf_path.name} is locked.\nPlease close the PDF. Retry? ")
@@ -222,9 +221,9 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, in
     import os
     from pathlib import Path
 
-    interface.print_green(f"Ready for transcription: {con_file_path.name}")
+    interface.print_success(f"Ready for transcription: {con_file_path.name}")
 
-    # Pass the unified interface context down down the line
+    # Pass the unified interface context down the line
     handle_gemini_toc_transcription(source_folder, con_file_path, interface)
     interface.print_info("Back to add_toc_to_pdf")
 
@@ -254,10 +253,10 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, in
             interface.print_error("Operation canceled by user.")
             return False
 
-        success = append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries)
+        success = append_to_existing_toc(input_pdf_path, output_pdf_path, toc_entries, interface)
 
         if success:
-            interface.print_green("TOC applied successfully.")
+            interface.print_success("TOC applied successfully.")
             return True
 
         interface.print_error("\n[!] TOC Append Failed (Check if PDF is open in Acrobat).")
@@ -293,7 +292,7 @@ def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Option
 
     success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name, interface)
     if not success:
-        print_red("Extraction workflow failed.")
+        interface.print_error("Extraction workflow failed.")
         return None
 
     if con_file_path:

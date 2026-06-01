@@ -17,6 +17,7 @@ def main():
 
     # 2. Capture the validated english metadata matrix
     book_titles = normalize_book_title(interface)
+    folder_name = None
 
     if book_titles:
         folder_name = book_titles['folder_name']
@@ -63,9 +64,9 @@ def main():
     )
     print("Back to main")
 
-    check_file_size(fin_file_path)
+    check_file_size(fin_file_path, interface)
 
-    folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path))
+    folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path), interface)
 
     fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table)
 

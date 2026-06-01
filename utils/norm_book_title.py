@@ -148,7 +148,7 @@ def normalize_book_title(interface: AppInterface) -> dict | None:
 
         # 4. Check if the metadata tool approved the input configuration matrix
         if metadata["display_title"] not in ["Error", "Invalid Input"]:
-            interface.print_info(metadata['display_title'], metadata['folder_name'])
+            interface.print_info(f"Display title = {metadata['display_title']}\nFolder name = {metadata['folder_name']}")
             return metadata  # Return the valid dictionary to the caller
 
         # 5. Fallback message if the characters were non-English or invalid

@@ -2,6 +2,8 @@ import psutil
 import logging
 from pathlib import Path
 
+from src.logic.interface_controller import AppInterface
+
 
 def is_excel_running() -> bool:
     """
@@ -40,7 +42,7 @@ def delete_file(file_path: Path) -> bool:
         return False
 
 
-def clean_up_folder_after_processing(folder_path: str):
+def clean_up_folder_after_processing(folder_path: str, interface:AppInterface):
     """
     Organizes files into 'flip', deletes temps, and moves folder to archive.
     Retries locally if files are locked by other processes.
@@ -89,7 +91,7 @@ def clean_up_folder_after_processing(folder_path: str):
             shutil.move(str(folder), str(dest_path))
 
 
-            print_green(f"Successfully archived folder to: {dest_path}")
+            interface.print_success(f"Successfully archived folder to: {dest_path}")
             return dest_path / "flip"  # Success exit
 
         except (PermissionError, OSError) as e:

@@ -3,8 +3,7 @@ import re
 import shutil
 from pathlib import Path
 
-from utils.input_output_tools import print_red, print_green, wait_for_ready_signal
-
+from src.logic.interface_controller import AppInterface
 
 def validate_csv_path(path_str: str) -> tuple[bool, str]:
     """Validates if a string is a valid path to an existing CSV."""
@@ -38,7 +37,7 @@ def validate_pdf_path(path_str: str) -> tuple[bool, str]:
     return True, ""
 
 
-def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
+def move_cover_image(source_dir: Path, dest_dir: Path, interface:AppInterface) -> str:
     """
     Moves a numeric JPG (DanaCode) from source to destination.
 
@@ -47,7 +46,7 @@ def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
 
     # 1. Validation for network drive reliability
     if not source_dir.exists():
-        print_red(f"Source directory does not exist: {source_dir}")
+        interface.print_error(f"Source directory does not exist: {source_dir}")
         return ''
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -65,12 +64,12 @@ def move_cover_image(source_dir: Path, dest_dir: Path) -> str:
                     shutil.move(str(file_path), str(dest_dir / file_path.name))
                     return dana_code
                 except PermissionError:
-                    print_red(f"File {file_path.name} is in use.")
+                    interface.print_error(f"File {file_path.name} is in use.")
 
     return ''
 
 
-def check_file_size(file_path: str, limit_mb: int = 500) -> bool:
+def check_file_size(file_path: str, interface:AppInterface, limit_mb: int = 500) -> bool:
     """
     Checks if a PDF exceeds the limit and advises on the new naming convention.
     """
@@ -89,18 +88,18 @@ def check_file_size(file_path: str, limit_mb: int = 500) -> bool:
         original_path = Path(file_path)
         new_name = f"DOWNSIZED {original_path.name}"
 
-        wait_for_ready_signal(
+        interface.ask_checkpoint("Reduce PDF File Size",
             "ACTION REQUIRED: The PDF is too large for FlipHTML5.\n"
             "1. Open the PDF in Acrobat\n"
             "2. Use 'Save as Other' -> 'Reduced Size PDF'\n"
             f"3. Save the new file as save: {new_name}\n"
         )
 
-        wait_for_ready_signal(
+        interface.ask_checkpoint("Correct Size Reassurance",
             "ACTION REQUIRED:\n"
             f"Before proceeding, please make sure that the new DOWNSIZED file is less than {limit_mb} MB\n"
         )
 
 
-    print_green(f"Check passed: {file_size_mb:.2f} MB.")
+    interface.print_success(f"Check passed: {file_size_mb:.2f} MB.")
     return True

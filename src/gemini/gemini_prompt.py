@@ -1,4 +1,4 @@
-from utils.input_output_tools import print_red
+from utils.input_output_tools import print_red, ask_offset
 
 
 def load_gemini_prompt() -> str:
@@ -58,6 +58,7 @@ def handle_gemini_toc_transcription(source_folder, con_file_path, interface):
             f"2. Drag the file to the chat: {os.path.basename(con_file_path)}\n"
             f"3. Paste the prompt (already copied to your clipboard)\n"
             f"4. Save the AI-generated CSV as 'toc.csv' in the book folder\n"
+            f"5. Review the AI-generated CSV for correctness before proceeding\n"
             f"--------------------------------------\n"
             f"Press Enter once 'toc.csv' is saved and you are ready to proceed: "
         )

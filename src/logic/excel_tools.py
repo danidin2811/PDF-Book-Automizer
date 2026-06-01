@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 
 from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH, FOLDER_NAME_COL
 from src.logic.file_operations import validate_csv_path
+from src.logic.interface_controller import AppInterface
 from utils.input_output_tools import print_red, print_green
 import csv
 
@@ -155,7 +156,7 @@ def get_lock_status(filepath: Path) -> str:
     return 'none'
 
 
-def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: str):
+def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: str, interface:AppInterface):
     """
     Directly updates a specific cell using a pre-found row index.
     """
@@ -166,7 +167,7 @@ def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: st
         sheet.cell(row=row_index, column=col_index).value = value
 
         workbook.save(BOOK_TRACKER_EXCEL_FILE_PATH)
-        print_green(f"Successfully wrote {value} to {row_index} x {col_index} in {sheet_name} sheet")
+        interface.print_success(f"Successfully wrote {value} to {row_index} x {col_index} in {sheet_name} sheet")
         return True
     except PermissionError:
         print_red("Cannot save: Please close the Excel file!")
