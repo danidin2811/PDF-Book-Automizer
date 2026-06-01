@@ -72,7 +72,7 @@ def upload_file(local_file_path):
 # ==========================================
 # 3. CREATE BOOK API (with design config)
 # ==========================================
-def create_book(file_src_url, title, description, design_config=None):
+def create_book(file_src_url, title, description, link, design_config=None):
     print("\n--- 2. Creating Book Task ---")
     url = "https://api.fliphtml5.com/api/book/create-book-multi"
     path = "/api/book/create-book-multi"
@@ -83,8 +83,7 @@ def create_book(file_src_url, title, description, design_config=None):
         "title": title,
         "description": description,
         "filePath": file_path_json_str,
-        "htmlTemplate": "Minimalist",
-        "bLink": "my_link",
+        "bLink": link,
         "folderId": "7398072"
     }
 

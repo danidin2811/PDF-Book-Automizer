@@ -68,11 +68,12 @@ def main():
 
     folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path), interface)
 
-    fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table)
+    if fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table, interface):
+        interface.print_success("Finished uploading fin file to flip")
 
-    run_excel_update_workflow(book_row_index_in_table, book_titles['folder_name'])
+        run_excel_update_workflow(book_row_index_in_table, book_titles['folder_name'], interface)
 
-    print("Workflow complete!")
+        print("Workflow complete!")
 
 if __name__ == "__main__":
     main()

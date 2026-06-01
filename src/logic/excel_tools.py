@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 from src.constants import BOOK_TRACKER_EXCEL_FILE_PATH, FOLDER_NAME_COL
 from src.logic.file_operations import validate_csv_path
 from src.logic.interface_controller import AppInterface
-from utils.input_output_tools import print_red, print_green
+from utils.input_output_tools import print_red
 import csv
 
 
@@ -25,7 +25,7 @@ def col_letter_to_index(letter: str) -> int:
     for char in letter.upper():
         # ord('A') is 65. So 'A' - 64 = 1.
         index = index * 26 + (ord(char) - 64)
-    return index
+    return int(index)
 
 
 def get_new_toc_entries(csv_path):
@@ -157,6 +157,8 @@ def get_lock_status(filepath: Path) -> str:
 
 
 def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: str, interface:AppInterface):
+    from openpyxl.utils import get_column_letter
+
     """
     Directly updates a specific cell using a pre-found row index.
     """
@@ -167,7 +169,7 @@ def update_excel_cell(row_index: int, col_index: int, sheet_name: str, value: st
         sheet.cell(row=row_index, column=col_index).value = value
 
         workbook.save(BOOK_TRACKER_EXCEL_FILE_PATH)
-        interface.print_success(f"Successfully wrote {value} to {row_index} x {col_index} in {sheet_name} sheet")
+        interface.print_success(f"Successfully wrote {value} to {row_index} x {get_column_letter(col_index)} in {sheet_name} sheet")
         return True
     except PermissionError:
         print_red("Cannot save: Please close the Excel file!")
@@ -213,7 +215,7 @@ def open_tracker_in_excel() -> None:
         logging.error(f"Failed to open Excel: {e}")
 
 
-def run_excel_update_workflow(row_index: int, folder_name: str) -> bool:
+def run_excel_update_workflow(row_index: int, folder_name: str, interface:AppInterface) -> bool:
     """
     Orchestrates the Excel update with specific feedback on lock types.
     """
@@ -236,13 +238,13 @@ def run_excel_update_workflow(row_index: int, folder_name: str) -> bool:
             return False  # Properly returns bool
 
     # Proceed with the update
-    update_excel_cell(row_index,col_letter_to_index(FOLDER_NAME_COL),"ראשי",folder_name)
+    update_excel_cell(row_index,col_letter_to_index(FOLDER_NAME_COL),"ראשי",folder_name, interface)
 
     open_tracker_in_excel()
     return True
 
 
-def get_password_from_excel(row_index: int) -> Optional[str]:
+def get_password_from_excel(row_index: int, interface:AppInterface) -> Optional[str]:
     """
     Directly retrieves a password from a known row index using openpyxl.
     """
@@ -255,8 +257,8 @@ def get_password_from_excel(row_index: int) -> Optional[str]:
         # Column 13 is 'M' (where the password usually lives)
         password = sheet.cell(row=row_index, column=13).value
 
-        return str(password) if password else None
+        return [str(password)] if password else None
 
     except Exception as e:
-        print(f"Error retrieving password: {e}")
+        interface.print_error(f"Error retrieving password: {e}")
         return None

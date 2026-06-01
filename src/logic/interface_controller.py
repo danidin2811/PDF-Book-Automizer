@@ -1,4 +1,7 @@
-# REMOVE the global top-level import: from utils.input_output_tools import yes_or_no
+def calculate_string_state(text: str, max_len: int = 40):
+    """Returns (current_length, is_over_limit)"""
+    current_len = len(text)
+    return current_len, current_len > max_len
 
 class AppInterface:
     """Manages abstraction layers between CLI (Terminal) and GUI (CustomTkinter)."""
