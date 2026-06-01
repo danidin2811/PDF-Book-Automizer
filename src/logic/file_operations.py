@@ -26,6 +26,8 @@ def validate_pdf_path(path_str: str) -> tuple[bool, str]:
 
     path = Path(path_str.strip('"'))
 
+    if not path_str.strip():
+        return False, "The file path can't be empty, please enter a valid file path."
     if not path.exists():
         return False, f"File path {path} does not exist."
     if not path.is_file():

@@ -1,8 +1,10 @@
+import pyperclip
+
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
 from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
 from utils.norm_book_title import normalize_book_title
-from src.logic.pdf_processor import process_pdf
+from src.logic.pdf_processor import process_pdf, setup_working_directory, verify_and_rename_folder
 from utils.input_output_tools import wait_for_ready_signal, yes_or_no, print_red
 from src.logic.excel_tools import run_excel_update_workflow
 from src.logic.interface_controller import AppInterface
@@ -10,11 +12,19 @@ from src.logic.interface_controller import AppInterface
 def main():
     interface = AppInterface(ui=None)
 
+    # 1. Run setup checks to pull down paths
+    input_pdf_path, source_folder, folder_name_placeholder = setup_working_directory(interface)
+    if input_pdf_path is None:
+        return
+
+    # 2. Capture the validated english metadata matrix
     book_titles = normalize_book_title(interface)
 
     if book_titles:
-        book_folder_name = book_titles['folder_name']
-        wait_for_ready_signal(f"ACTION REQUIRED: Rename the book folder to: {book_folder_name}")
+        target_folder_name = book_titles['folder_name']
+
+        # 3. Hand off to the exact same logic processor!
+        verify_and_rename_folder(source_folder, target_folder_name, interface)
 
     book_folder_path = None
     fin_file_path = ''
@@ -22,7 +32,7 @@ def main():
 
     while book_folder_path is None:
         try:
-            result = process_pdf()
+            result = process_pdf(input_pdf_path, source_folder, folder_name, interface)
 
             if result is None:  # If process_pdf returned None on early failure
                 if not yes_or_no("\n[!] Error encountered. RETRY? "):

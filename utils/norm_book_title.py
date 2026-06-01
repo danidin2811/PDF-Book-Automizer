@@ -108,7 +108,6 @@ def get_book_metadata(raw_title: str, interface: AppInterface) -> dict:
         return {"display_title": "", "folder_name": ""}
 
     if not is_valid_english_title(raw_title):
-        logging.error("Invalid Input: Title must contain English alphanumeric characters.")
         return {"display_title": "Invalid Input", "folder_name": "invalid_input"}
 
     display_title = to_title_case(raw_title)
@@ -145,7 +144,7 @@ def normalize_book_title(interface: AppInterface) -> dict | None:
             continue
 
         # 3. Process and Validate via the metadata tool
-        metadata = get_book_metadata(user_input)
+        metadata = get_book_metadata(user_input, interface)
 
         # 4. Check if the metadata tool approved the input configuration matrix
         if metadata["display_title"] not in ["Error", "Invalid Input"]:

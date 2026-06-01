@@ -13,7 +13,7 @@ from src.logic.interface_controller import AppInterface
 from src.logic.file_operations import check_file_size, validate_pdf_path
 from src.constants import READY_TO_UPLOAD_TO_AMAZON_FOLDER, BOOK_TRACKER_EXCEL_FILE_PATH
 from utils.norm_book_title import normalize_book_title, get_book_metadata
-from src.logic.pdf_processor import process_pdf
+from src.logic.pdf_processor import process_pdf, verify_and_rename_folder
 from src.logic.file_operations import check_file_size
 from src.logic.system_tools import clean_up_folder_after_processing
 from src.fliphtml5.flip_html_automation import fliphtml5_automation
@@ -404,40 +404,22 @@ class BookAutomizerUI(ctk.CTk):
         interface = AppInterface(ui=self)
 
         try:
+            # 1. Run the metadata assignment
             book_metadata = normalize_book_title(interface)
-            if self.is_canceling: return
+            if self.is_canceling or not book_metadata:
+                return
 
             folder_name = book_metadata["folder_name"]
-            display_title = book_metadata["display_title"]
 
-            self.clipboard_clear()
-            self.clipboard_append(folder_name)
-
-            self.log("-" * 30)
-            self.log(f"Display Title: {display_title}")
-            self.log(f"Folder Name:   {folder_name} [COPIED TO CLIPBOARD]")
-            self.log("-" * 30)
-
-            if self.is_canceling: return
-
-            # --- DYNAMIC FOLDER NAME MATCH CHECK ---
-            # 1. Pull the raw string path given in the entry row and normalize it
+            # 2. Extract paths using pre-validated entry variables
             raw_path_str = self.source_file.get().strip().strip('"').strip("'")
             current_pdf_path = Path(raw_path_str).resolve()
+            source_folder = current_pdf_path.parent
 
-            # 2. Extract the parent folder name and match it against the targeted layout name
-            actual_parent_folder_name = current_pdf_path.parent.name.strip().lower()
-
-            if actual_parent_folder_name == folder_name:
-                self.log(
-                    f"[INFO] Folder matches target tracking layout name ('{folder_name}'). Skipping rename checkpoint step.")
-            else:
-                # If they do not match, proceed with requesting the manual folder modification step
-                self.async_blocking_checkpoint(
-                    "Rename Action Required",
-                    f"Rename the book folder to: '{folder_name}'\n(This text has been automatically copied to your system clipboard!)"
-                )
-                if self.is_canceling: return
+            # 3. Hand off the logic checking to the unified backend helper
+            proceed = verify_and_rename_folder(source_folder, folder_name, interface)
+            if self.is_canceling or not proceed:
+                return
 
             extract_sections = self.async_ask_yes_no("Section Extraction", "Do you want to extract section PDFs?")
             if self.is_canceling: return

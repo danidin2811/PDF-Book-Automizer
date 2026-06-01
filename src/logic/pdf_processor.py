@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import Optional
 import shutil
 
+import pyperclip
+
 from src.gemini.gemini_prompt import handle_gemini_toc_transcription
 from src.constants import COVERS_FOLDER
 from src.logic.excel_tools import process_toc_extraction, find_danacode_row
+from src.logic.interface_controller import AppInterface
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import *
@@ -14,37 +17,90 @@ from src.logic.pdf_tools import append_to_existing_toc
 from utils.open_pdfs_side_by_side import open_pdfs_side_by_side_acrobat
 
 
-def get_input_pdf_path() -> Path:
+def verify_and_rename_folder(source_folder: Path, target_folder_name: str, interface: AppInterface) -> bool:
     """
-        Retrieves and validates a PDF path from the user.
+    Checks if the actual parent folder name matches the generated target book name.
+    If it matches, it automatically skips the checkpoint. If it doesn't match,
+    it copies the name to the clipboard and handles the abstract blocking checkpoint.
 
-        Handles Windows 11 drag-and-drop quote cleaning and ensures file validity.
+    Returns:
+        bool: True if the process should continue, False if a GUI cancellation occurred.
+    """
+    # 1. Normalize and extract the parent directory's actual string name
+    actual_parent_name = source_folder.name.strip().lower()
 
-        Returns:
-            Path: Validated object pointing to the target PDF.
-        """
+    if actual_parent_name == target_folder_name.strip().lower():
+        # Using print_info or a clean log router so it prints cleanly to Terminal or UI Log Box
+        interface.print_info("System Check",
+                             f"Folder matches target tracking layout name ('{target_folder_name}'). Skipping rename checkpoint.")
+        return True
 
-    prompt = "\nEnter the path of the PDF file (or drag and drop it here): "
+    # 2. If they do not match, proceed with the system clipboard action
+    try:
+        pyperclip.copy(target_folder_name)
+    except Exception as e:
+        interface.print_error(f"Failed to copy folder name to clipboard: {e}")
 
-    while True:
-        raw_input = input(prompt).strip().replace('"', '')
+    # 3. Fire the abstracted blocking checkpoint
+    interface.ask_checkpoint(
+        "Rename Folder",
+        f"Please rename the book folder to: '{target_folder_name}'\n(The text has been automatically copied to your system clipboard)."
+    )
+
+    # 4. Handle thread execution termination checks safely if running under UI instances
+    if interface.is_gui and interface.ui.is_canceling:
+        return False
+
+    return True
+
+def get_input_pdf_path(interface: AppInterface) -> Path | None:
+    """
+    Retrieves and validates a PDF path from the user.
+    Supports instant retrieval from GUI configurations or fallback to interactive CLI loops.
+
+    Returns:
+        Path: Validated object pointing to the target PDF, or None if cancelled.
+    """
+    # --- 1. GUI EXECUTION PARADIGM ---
+    if interface.is_gui:
+        # Pull the pre-selected path directly from the UI state variable
+        raw_input = interface.ui.source_file.get().strip().replace('"', '').replace("'", "")
 
         is_valid, error_message = validate_pdf_path(raw_input)
-
         if is_valid:
             return Path(raw_input)
 
-        # Provide feedback and loop back
-        print_red(f"Error: {error_message}")
-        prompt = "\nPlease try again. Drag and drop the PDF file and press Enter: "
+        # If the GUI path is invalid, log the issue and exit gracefully
+        interface.print_error(f"Invalid PDF Source Path: {error_message}")
+        return None
 
-def setup_working_directory() -> tuple[Path, Path, str]:
+    # --- 2. CLI EXECUTION PARADIGM ---
+    prompt = "Enter the path of the PDF file (or drag and drop it here):"
+
+    while True:
+        # Abstracted via ask_string, which uses standard terminal input() in CLI mode
+        raw_input = interface.ask_string("PDF Selection", prompt)
+
+        if raw_input is None:
+            return None
+
+        raw_input = raw_input.strip().replace('"', '').replace("'", "")
+
+        is_valid, error_message = validate_pdf_path(raw_input)
+        if is_valid:
+            return Path(raw_input)
+
+        # Provide feedback and update prompt structure for next loop iteration
+        interface.print_error(error_message)
+        prompt = "Please try again. Drag and drop the PDF file and press Enter:"
+
+def setup_working_directory(interface: AppInterface) -> tuple[Path, Path, str]:
     """
         Prompts for the PDF path and derives the folder context.
         Returns: (input_pdf_path, source_folder, folder_name)
     """
     print("now in setup_working_directory")
-    input_pdf_path = get_input_pdf_path()
+    input_pdf_path = get_input_pdf_path(interface)
     source_folder = input_pdf_path.parent  # get the source folder of the PDF file
     folder_name = str(source_folder.name)
 
@@ -214,7 +270,7 @@ def add_toc_to_pdf(con_file_path, folder_name, input_pdf_path, source_folder, ui
         if not yes_or_no("Fix the issue and retry writing bookmarks? "):
             return False
 
-def process_pdf(ui=None) -> Optional[tuple]:
+def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Optional[tuple]:
     """
     Executes the book processing pipeline.
     If a ui context is provided, requests inputs asynchronously through the GUI layout layer.
@@ -227,22 +283,7 @@ def process_pdf(ui=None) -> Optional[tuple]:
         "3. Ensure the JPG filename matches the DanaCode\n\n"
     )
 
-    if ui is not None:
-        ui.async_blocking_checkpoint("PRE-PROCESSING CHECKLIST", checklist_msg)
-        if ui.is_canceling: return None
-
-    else: # Fallback to legacy CLI if run outside the GUI
-        from utils.input_output_tools import wait_for_ready_signal
-        wait_for_ready_signal(checklist_msg)
-
-    if ui is not None:
-        clean_path_str = ui.source_file.get().strip().strip('"').strip("'")
-        input_pdf_path = Path(clean_path_str).resolve()
-        source_folder = input_pdf_path.parent
-        folder_name = source_folder.stem.strip().lower()
-
-    else:
-        input_pdf_path, source_folder, folder_name = setup_working_directory()
+    interface.ask_checkpoint("Complete Checklist", checklist_msg)
 
     danacode = run_cover_workflow(source_folder, COVERS_FOLDER)
 

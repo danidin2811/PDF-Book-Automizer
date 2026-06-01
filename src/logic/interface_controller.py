@@ -38,3 +38,20 @@ class AppInterface:
             print("-" * 30)
             print(message)
             print("-" * 30)
+
+    def ask_checkpoint(self, title: str, action_message: str):
+        """
+        Pauses execution until the user manually completes an external task
+        (e.g., renaming a folder, checking Adobe Acrobat, saving a CSV file).
+        """
+        if self.is_gui:
+            # Invokes the thread-safe overlay banner with a confirmation button
+            return self.ui.async_blocking_checkpoint(title, action_message)
+
+        else:
+            # Fallback to the standard blocking terminal prompt
+            print(f"\n[ACTION REQUIRED] {title}")
+            print("-" * (ffff := len(title) + 18))
+            print(action_message)
+            input("\nPress Enter once you have completed this step to continue... ")
+            print("Proceeding...")
