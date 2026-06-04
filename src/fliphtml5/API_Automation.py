@@ -5,6 +5,8 @@ import base64
 import hmac
 import hashlib
 from datetime import datetime, timezone
+from pathlib import Path
+
 import requests
 from dotenv import load_dotenv
 
@@ -48,7 +50,7 @@ def generate_fliphtml5_headers(path, query_params=None):
 # ==========================================
 # 2. FILE UPLOAD API
 # ==========================================
-def upload_file(local_file_path) -> tuple[bool, str]:
+def upload_file(local_file_path:Path, interface:AppInterface) -> tuple[bool, str]:
     """
     Uploads a local file to FlipHTML5.
     Returns: (True, file_url) on success, or (False, error_message) on failure.
@@ -57,7 +59,7 @@ def upload_file(local_file_path) -> tuple[bool, str]:
     url = "https://api.fliphtml5.com/api/common/upload-file"
     path = "/api/common/upload-file"
 
-    is_path_valid, validation_msg = validate_pdf_path(local_file_path)
+    is_path_valid, validation_msg = validate_pdf_path(str(local_file_path))
     if not is_path_valid:
         return False, validation_msg
 

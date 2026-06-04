@@ -17,20 +17,26 @@ def main():
 
     # 2. Capture the validated english metadata matrix
     book_titles = normalize_book_title(interface)
-    folder_name = None
 
-    if book_titles:
-        folder_name = book_titles['folder_name']
-        pdf_filename = input_pdf_path.name
+    if not book_titles:
+        interface.print_error("Automation stopped: Book titles could not be resolved.")
+        return
 
-        updated_source_folder, success = verify_and_rename_folder(source_folder, folder_name, interface)
+    folder_name = book_titles.get('folder_name')
+    pdf_filename = input_pdf_path.name
 
-        if not success:
-            interface.print_error("Automation stopped: Folder mapping could not be safely finalized.")
-            return
+    if not folder_name:
+        interface.print_error("Automation stopped: Missing folder name mapping.")
+        return
+
+    updated_source_folder, success = verify_and_rename_folder(source_folder, folder_name, interface)
+
+    if not success:
+        interface.print_error("Automation stopped: Folder mapping could not be safely finalized.")
+        return
 
     input_pdf_path = updated_source_folder / pdf_filename
-    interface.print_info(f"[DEBUG] Active working target PDF path: {input_pdf_path}")
+    interface.print_success(f"Successfully verified active working target PDF: {input_pdf_path}")
 
     book_folder_path = None
     fin_file_path = ''
@@ -75,7 +81,7 @@ def main():
 
     folder_in_amazon = clean_up_folder_after_processing(str(book_folder_path), interface)
 
-    if fliphtml5_automation(folder_in_amazon, book_titles['display_title'], book_row_index_in_table, interface):
+    if fliphtml5_automation(folder_in_amazon, book_titles, book_row_index_in_table, interface):
         interface.print_success("Finished uploading fin file to flip")
 
         run_excel_update_workflow(book_row_index_in_table, book_titles['folder_name'], interface)

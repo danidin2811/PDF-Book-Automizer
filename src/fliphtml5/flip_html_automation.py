@@ -8,20 +8,23 @@ def verify_link_str_len(link_str, interface: AppInterface):
     return link_str
 
 
-def fliphtml5_automation(pdf_folder_path, display_title, row_index, interface:AppInterface):
+def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppInterface):
     from src.fliphtml5 import API_Automation
     from src.logic.file_operations import validate_pdf_path
+    from pathlib import Path
 
-    interface.print_info(f"pdf_folder_path = {pdf_folder_path}, display_title = {display_title}, row_index = {row_index}")
-    is_path_valid, error_message = validate_pdf_path(pdf_folder_path)
+    display_title = book_titles.get('display_title')
+    folder_title = book_titles.get('folder_name')
+    fin_pdf_path = Path(pdf_folder_path) / f"{folder_title}_fin.pdf"
+    is_path_valid, error_message = validate_pdf_path(str(fin_pdf_path))
 
     while not is_path_valid:
         interface.print_error(f"Invalid path at for {display_title}: {error_message}")
-        pdf_folder_path = interface.ask_string("Fix File Path", f"Please enter the correct path for '{display_title}': ")
-        is_path_valid, error_message = validate_pdf_path(pdf_folder_path)
+        fin_pdf_path = interface.ask_string("Fix File Path", f"Please enter the correct path for '{display_title}': ")
+        is_path_valid, error_message = validate_pdf_path(fin_pdf_path)
 
     # Guaranteed to be a valid path if we break out of the loop above
-    upload_success, upload_result = API_Automation.upload_file(pdf_folder_path)
+    upload_success, upload_result = API_Automation.upload_file(fin_pdf_path, interface)
 
     if not upload_success:
         # This will now only handle actual SERVER/NETWORK upload errors, not bad paths!

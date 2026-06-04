@@ -165,7 +165,7 @@ def run_extraction_workflow(input_pdf_path, source_folder, folder_name, interfac
     Returns True to continue, False to stop the main process.
     """
 
-    extract_sections = interface.ask_yes_no("Extract Sections", "Do you want to extract section PDFs? ")
+    extract_sections = interface.ask_yes_no("Extract Sections", "Do you want to extract section PDFs?")
     if not extract_sections:
         return True, None
 
