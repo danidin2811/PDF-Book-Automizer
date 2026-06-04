@@ -216,15 +216,37 @@ if __name__ == "__main__":
     # Goal 4: Define custom interface layouts and configurations here.
     # Adjust variables like loading captions, colors, backgrounds, or toolbar buttons
     MY_DESIGN_CONFIG = {
-        "loadingCaption": "Fetching Pages, Please Wait...",
-        "loadingCaptionColor": "0xFF0000",   # Example: Bright Red text hex code
-        "isPrintOn": "true",                 # Enable or disable tool features
-        "isDownloadOn": "false"              # Keep files locked down securely
+        "phoneFlipShortcutButton": True,
+        "updateURLForPage": False,
+        "appLogoLinkURL": "https://ybz.org.il/",
+        "FlipStyle": "Switch",
+        "RightToLeft": True,
+        "loadingCaption": "טוען את הספר",
+        "loadingCaptionColor": "0xffffff",
+        "restorePageVisible": True,
+        "isAccessibilityButtonVisible": True,
+        "ZoomMapVisible": True,
+        "searchKeywordFontColor": "0xffb000",
+        "searchHightlightColor": "0xfdc606",
+        "ShareButtonVisible": False,
+        "BookMarkButtonVisible": True,
+        "HomeButtonVisible": True,
+        "AutoPlayButtonVisible": True,
+        "SelectTextButtonVisible": True,
+        "MagnifierButtonVisible": True,
+        "InstructionsButtonVisible": True,
+        "showInstructionOnStart": True,
     }
 
     # Run the automated pipeline
     interface = AppInterface(ui=None)
-    uploaded_url = upload_file(target_pdf)
+    upload_success, upload_result = upload_file(Path(target_pdf), interface)
+
+    if not upload_success:
+        # This will now only handle actual SERVER/NETWORK upload errors, not bad paths!
+        interface.print_error(f"Upload process failed: {upload_result}")
+
+    uploaded_url = upload_result
     if uploaded_url:
         print(f"File uploaded successfully to: {uploaded_url}")
 
