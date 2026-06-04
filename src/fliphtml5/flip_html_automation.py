@@ -36,7 +36,7 @@ def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppI
 
     book_description = interface.ask_string("Enter Descrtiption", "Please enter the book description in English, if none - leave empty: ")
 
-    link_str = verify_link_str_len(display_title, interface)
+    link_str = verify_link_str_len(folder_title, interface)
 
     my_book_id = API_Automation.create_book(uploaded_url, display_title, book_description, link_str) # Create book using custom definitions and design profiles
 

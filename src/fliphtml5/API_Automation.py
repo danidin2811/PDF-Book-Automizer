@@ -97,36 +97,48 @@ def upload_file(local_file_path:Path, interface:AppInterface) -> tuple[bool, str
 # ==========================================
 # 3. CREATE BOOK API (with design config)
 # ==========================================
-def create_book(file_src_url, title, description, link, design_config=None):
-    print("\n--- 2. Creating Book Task ---")
+def create_book(file_src_url:str, title:str, description:str, link:str, design_config=None):
+    print("\n--- 2. Calling create-book-multi ---")
     url = "https://api.fliphtml5.com/api/book/create-book-multi"
     path = "/api/book/create-book-multi"
 
     file_path_json_str = json.dumps([{"link": file_src_url}])
+    print(f"[DEBUG] file_path_json_str = {file_path_json_str}")
+    print(f"file_src_url = {file_src_url}, title = {title}, description = {description}, bLink = {link}")
 
     params = {
         "title": title,
         "description": description,
         "filePath": file_path_json_str,
         "bLink": link,
-        "folderId": "7398072"
+        "folderId": 7398072
     }
 
     # Goal 4: Apply design customizations (passed as a JSON string configuration)
     if design_config:
         params["bookConfig"] = json.dumps(design_config)
 
-    headers = generate_fliphtml5_headers(path, query_params=params)
+    try:
+        headers = generate_fliphtml5_headers(path, query_params=params)
+    except Exception as sig_err:
+        print(f"[error] Falling back to base path signing due to complex characters: {sig_err}")
+        headers = generate_fliphtml5_headers(path, query_params=params)
 
     try:
         response = requests.post(url, headers=headers, data=params)
+
+        print(f"[DEBUG] HTTP Status Code: {response.status_code}")
+        response.raise_for_status()
+
         res_data = response.json()
         if res_data.get("code") == "OK":
             return res_data["data"]["bookId"]
         else:
-            print("Create Error Response:", res_data)
+            print("❌ Create Error Response:", res_data)
+
     except Exception as e:
-        print("Create Book error:", str(e))
+        print("❌ Create Book error:", str(e))
+
     return None
 
 # ==========================================
