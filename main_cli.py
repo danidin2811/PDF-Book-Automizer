@@ -21,9 +21,16 @@ def main():
 
     if book_titles:
         folder_name = book_titles['folder_name']
+        pdf_filename = input_pdf_path.name
 
-        # 3. Hand off to the exact same logic processor!
-        verify_and_rename_folder(source_folder, folder_name, interface)
+        updated_source_folder, success = verify_and_rename_folder(source_folder, folder_name, interface)
+
+        if not success:
+            interface.print_error("Automation stopped: Folder mapping could not be safely finalized.")
+            return
+
+    input_pdf_path = updated_source_folder / pdf_filename
+    interface.print_info(f"[DEBUG] Active working target PDF path: {input_pdf_path}")
 
     book_folder_path = None
     fin_file_path = ''
@@ -31,7 +38,7 @@ def main():
 
     while book_folder_path is None:
         try:
-            result = process_pdf(input_pdf_path, source_folder, folder_name, interface)
+            result = process_pdf(input_pdf_path, updated_source_folder, folder_name, interface)
 
             if result is None:  # If process_pdf returned None on early failure
                 if not yes_or_no("\n[!] Error encountered. RETRY? "):

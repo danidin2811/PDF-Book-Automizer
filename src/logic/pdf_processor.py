@@ -3,8 +3,6 @@ from pathlib import Path
 from typing import Optional
 import shutil
 
-import pyperclip
-
 from src.gemini.gemini_prompt import handle_gemini_toc_transcription
 from src.constants import COVERS_FOLDER
 from src.logic.excel_tools import process_toc_extraction, find_danacode_row
@@ -12,45 +10,60 @@ from src.logic.interface_controller import AppInterface
 from src.logic.pdf_tools import get_pdf_page_count, extract_pdf_sections, handle_english_section_logic
 from src.logic.file_operations import validate_pdf_path, move_cover_image
 from utils.input_output_tools import *
-from utils.input_output_tools import wait_for_ready_signal
 from src.logic.pdf_tools import append_to_existing_toc
 from utils.open_pdfs_side_by_side import open_pdfs_side_by_side_acrobat
 
 
-def verify_and_rename_folder(source_folder: Path, target_folder_name: str, interface: AppInterface) -> bool:
+def verify_and_rename_folder(source_folder: Path, target_folder_name: str, interface: AppInterface) -> tuple[Path, bool]:
     """
-    Checks if the actual parent folder name matches the generated target book name.
-    If it matches, it automatically skips the checkpoint. If it doesn't match,
-    it copies the name to the clipboard and handles the abstract blocking checkpoint.
+    Checks if the parent folder name matches the target book name.
+    If it matches, skips. If it doesn't, automatically attempts to rename it.
+    If an OS/Permission error occurs, falls back to instructing the user how to recover.
 
     Returns:
-        bool: True if the process should continue, False if a GUI cancellation occurred.
+        tuple[Path, bool]: (The current valid source_folder path, continuation_status)
     """
-    # 1. Normalize and extract the parent directory's actual string name
-    actual_parent_name = source_folder.name.strip().lower()
 
-    if actual_parent_name == target_folder_name.strip().lower():
-        # Using print_info or a clean log router so it prints cleanly to Terminal or UI Log Box
-        interface.print_info(f"Folder matches target tracking layout name ('{target_folder_name}'). Skipping rename checkpoint.")
-        return True
+    # 1. Normalize name comparisons
+    actual_parent_name = source_folder.name.strip()
+    target_clean_name = target_folder_name.strip()
 
-    # 2. If they do not match, proceed with the system clipboard action
-    try:
-        pyperclip.copy(target_folder_name)
-    except Exception as e:
-        interface.print_error(f"Failed to copy folder name to clipboard: {e}")
+    if actual_parent_name == target_clean_name:
+        interface.print_info(f"Folder matches target tracking layout name ('{target_clean_name}'). Skipping rename.")
+        return source_folder, True
 
-    # 3. Fire the abstracted blocking checkpoint
-    interface.ask_checkpoint(
-        "Rename Folder",
-        f"Please rename the book folder to: '{target_folder_name}'\n(The text has been automatically copied to your system clipboard)."
-    )
+    # 2. Automatically attempt to rename the folder
+    # Compute what the new folder path would look like
+    new_folder_path = source_folder.parent / target_clean_name
 
-    # 4. Handle thread execution termination checks safely if running under UI instances
-    if interface.is_gui and interface.ui.is_canceling:
-        return False
+    while True:
+        try:
+            interface.print_info(f"Attempting to automatically rename folder {actual_parent_name} to: '{target_clean_name}'...")
 
-    return True
+            source_folder.rename(new_folder_path)
+
+            interface.print_success(f"Successfully renamed folder to: '{target_clean_name}'")
+            return new_folder_path, True  # Return the brand new path pointer
+
+        except (PermissionError, FileExistsError) as os_err:
+            # Handle standard Windows file locks (e.g., folder open in Explorer, PDF open in Acrobat)
+            interface.print_error(f"Automation Error: Cannot rename directory. Details: {os_err}")
+
+            # Interactive recovery checkpoint loop
+            retry = interface.ask_yes_no(
+                "Folder Access Locked",
+                f"Could not rename folder because it is locked by the system.\n\n"
+                f"Please close any programs (like File Explorer, Adobe Acrobat, Word) "
+                f"using the folder '{source_folder.name}' and click Yes to retry, or No to cancel."
+            )
+
+            if not retry or (interface.is_gui and interface.ui.is_canceling):
+                interface.print_error("Folder renaming process canceled by user.")
+                return source_folder, False
+
+        except Exception as general_err:
+            interface.print_error(f"Unexpected file system mapping failure: {general_err}")
+            return source_folder, False
 
 def get_input_pdf_path(interface: AppInterface) -> Path | None:
     """
@@ -119,6 +132,7 @@ def run_cover_workflow(source_folder: Path, destination_folder: Path, interface)
                       None if the user chooses to cancel.
     """
 
+    interface.print_info(f"[DEBUG] in run_cover_workflow: source_folder = {source_folder}")
     checklist_msg = (
         "1. Close the Excel tracking table\n"
         "2. Ensure the numeric JPG cover is in the source folder\n"
@@ -272,6 +286,7 @@ def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Option
     Fallback to traditional CLI prompts if no UI context is supplied.
     """
 
+    interface.print_info(f"[DEBUG] in process_pdf: input_pdf_path = {input_pdf_path}, source_folder = {source_folder}, folder_name = {folder_name}")
     danacode = run_cover_workflow(source_folder, COVERS_FOLDER, interface)
 
     if not danacode:
@@ -283,12 +298,12 @@ def process_pdf(input_pdf_path, source_folder, folder_name, interface) -> Option
     while not success:
         interface.print_error(f"Error: DanaCode '{danacode}' not found or Excel is locked.")
 
-        if not interface.ask_yes_no("Try Again?", "Would you like to fix the Excel and try again? "):
-            interface.print_info("User cancelled", "Exiting process.")
+        if not interface.ask_yes_no("Try Again?", "Would you like to fix the Excel and try again?"):
+            interface.print_info("Exiting process.")
 
         success, row_index = find_danacode_row(danacode)
 
-        interface.print_info("Danacode found", f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
+        interface.print_info(f"Danacode {danacode} found in row: {row_index}. Ready for updates.")
 
     success, con_file_path = run_extraction_workflow(input_pdf_path, source_folder, folder_name, interface)
     if not success:

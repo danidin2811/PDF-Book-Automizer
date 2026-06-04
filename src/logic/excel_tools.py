@@ -195,7 +195,6 @@ def find_danacode_row(dana_code: str) -> Tuple[bool, Optional[int]]:
             if cell.value and str(cell.value).strip() == target:
                 return True, cell.row
 
-        logging.warning(f"DanaCode {target} not found in Column B.")
         return False, None
 
     except PermissionError:
