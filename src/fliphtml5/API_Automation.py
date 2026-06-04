@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 import requests
 from dotenv import load_dotenv
 
+from src.logic.file_operations import validate_pdf_path
+from src.logic.interface_controller import AppInterface
+
 load_dotenv()
 
 # ==========================================
@@ -45,29 +48,49 @@ def generate_fliphtml5_headers(path, query_params=None):
 # ==========================================
 # 2. FILE UPLOAD API
 # ==========================================
-def upload_file(local_file_path):
+def upload_file(local_file_path) -> tuple[bool, str]:
+    """
+    Uploads a local file to FlipHTML5.
+    Returns: (True, file_url) on success, or (False, error_message) on failure.
+    """
     print("\n--- 1. Uploading File ---")
     url = "https://api.fliphtml5.com/api/common/upload-file"
     path = "/api/common/upload-file"
 
-    headers = generate_fliphtml5_headers(path, query_params=None)
-
-    if not os.path.exists(local_file_path):
-        print(f"Error: Local file '{local_file_path}' not found!")
-        return None
+    is_path_valid, validation_msg = validate_pdf_path(local_file_path)
+    if not is_path_valid:
+        return False, validation_msg
 
     try:
+        headers = generate_fliphtml5_headers(path, query_params=None)
+
+        interface.print_info(f"[DEBUG] Opening file binary stream...")
         with open(local_file_path, "rb") as f:
             files = {"file": (os.path.basename(local_file_path), f, "application/pdf")}
+
+            interface.print_info(f"[DEBUG] Sending POST request to FlipHTML5...")
             response = requests.post(url, headers=headers, files=files)
 
+        # Check HTTP Status Codes before parsing JSON
+        interface.print_info(f"[DEBUG] HTTP Response Status Code: {response.status_code}")
+        response.raise_for_status()
+
         res_data = response.json()
+        interface.print_info(f"[DEBUG] Raw API Response: {res_data}")
+
         if res_data.get("code") == "OK":
             file_src = res_data["data"]["fileSrc"]
-            return "https:" + file_src if file_src.startswith("//") else file_src
+            final_url = "https:" + file_src if file_src.startswith("//") else file_src
+            return True, final_url
+        else:
+            return False, f"[API Error] Upload rejected by server. Payload: {res_data}"
+
+    except PermissionError:
+        return False, f"[Permission Error] Access Denied to '{local_file_path}'. File may be open elsewhere."
+    except requests.exceptions.RequestException as req_err:
+        return False, f"[Network Error] Connection or HTTP issue during upload: {req_err}"
     except Exception as e:
-        print("Upload error:", str(e))
-    return None
+        return False, f"[Unexpected Error] Critical failure: {str(e)}"
 
 # ==========================================
 # 3. CREATE BOOK API (with design config)
@@ -167,12 +190,11 @@ def set_book_privacy_with_password(book_id, passwords_list):
 # EXECUTION CONTROLLER
 # ==========================================
 if __name__ == "__main__":
-    # Your local input file path
-    target_pdf = r"C:\Users\system1\Desktop\3111025.pdf"
+    target_pdf = r"C:\Users\system1\Desktop\3111025.pdf" # Your local input file path
 
-    # Goal 2 & 3: Define custom text metadata parameters
-    MY_CUSTOM_TITLE = input("Please enter a title: ")
-    MY_CUSTOM_DESC = input("Please enter a description: ")
+    my_custom_title = input("Please enter a title: ")
+    my_custom_desc = input("Please enter a description: ")
+    my_custom_link = my_custom_title
 
     # Goal 1: Set arbitrary passwords required to access the document
     MY_PASSWORDS = [input("Please enter a password: ")]
@@ -187,6 +209,7 @@ if __name__ == "__main__":
     }
 
     # Run the automated pipeline
+    interface = AppInterface(ui=None)
     uploaded_url = upload_file(target_pdf)
     if uploaded_url:
         print(f"File uploaded successfully to: {uploaded_url}")
@@ -194,8 +217,9 @@ if __name__ == "__main__":
         # Create book using custom definitions and design profiles
         my_book_id = create_book(
             file_src_url=uploaded_url,
-            title=MY_CUSTOM_TITLE,
-            description=MY_CUSTOM_DESC,
+            title=my_custom_title,
+            description=my_custom_desc,
+            link = my_custom_link,
             design_config=MY_DESIGN_CONFIG
         )
 
