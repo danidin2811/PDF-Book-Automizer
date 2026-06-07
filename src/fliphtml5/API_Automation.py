@@ -97,15 +97,18 @@ def upload_file(local_file_path:Path, interface:AppInterface) -> tuple[bool, str
 # ==========================================
 # 3. CREATE BOOK API (with design config)
 # ==========================================
-def create_book(file_src_url:str, title:str, description:str, link:str, design_config=None):
+def create_book(file_src_url: str, title: str, description: str, link: str, design_config=None) -> tuple[bool, dict | str]:
+    """
+    Tries to create a book.
+    Returns: (True, book_id_str) on success
+             (False, {'code': '...', 'msg': '...'}) on API validation failure
+             (False, "error_message_str") on network/unexpected exception
+    """
     print("\n--- 2. Calling create-book-multi ---")
     url = "https://api.fliphtml5.com/api/book/create-book-multi"
     path = "/api/book/create-book-multi"
 
     file_path_json_str = json.dumps([{"link": file_src_url}])
-    print(f"[DEBUG] file_path_json_str = {file_path_json_str}")
-    print(f"file_src_url = {file_src_url}, title = {title}, description = {description}, bLink = {link}")
-
     params = {
         "title": title,
         "description": description,
@@ -114,32 +117,25 @@ def create_book(file_src_url:str, title:str, description:str, link:str, design_c
         "folderId": 7398072
     }
 
-    # Goal 4: Apply design customizations (passed as a JSON string configuration)
     if design_config:
         params["bookConfig"] = json.dumps(design_config)
 
     try:
         headers = generate_fliphtml5_headers(path, query_params=params)
-    except Exception as sig_err:
-        print(f"[error] Falling back to base path signing due to complex characters: {sig_err}")
-        headers = generate_fliphtml5_headers(path, query_params=params)
-
-    try:
         response = requests.post(url, headers=headers, data=params)
-
-        print(f"[DEBUG] HTTP Status Code: {response.status_code}")
         response.raise_for_status()
 
         res_data = response.json()
         if res_data.get("code") == "OK":
-            return res_data["data"]["bookId"]
+            # SUCCESS: Return True and the ID
+            return True, res_data["data"]["bookId"]
         else:
-            print("❌ Create Error Response:", res_data)
+            # API ERROR: Return False and the payload dictionary
+            return False, res_data
 
     except Exception as e:
-        print("❌ Create Book error:", str(e))
-
-    return None
+        # NETWORK/SYSTEM ERROR: Return False and a descriptive text string
+        return False, f"Network or execution failure: {str(e)}"
 
 # ==========================================
 # 4. GET BOOK CONVERSION PROGRESS API

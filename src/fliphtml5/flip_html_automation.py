@@ -38,19 +38,84 @@ def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppI
 
     link_str = verify_link_str_len(folder_title, interface)
 
+    success = False
+    my_book_id = None
+
+    # Run an explicit control loop until the task succeeds, or the user cancels
+    while not success:
+        # Trigger the call and unpack the stateful tuple
+        success, result = API_Automation.create_book(uploaded_url, display_title, book_description, link_str)
+
+        if success:
+            my_book_id = result  # Now guaranteed to be a valid bookId string
+            break
+
+        # --- ERROR HANDLING LAYER ---
+        # Case A: An API specification error occurred (result is a dictionary)
+        if isinstance(result, dict):
+            error_code = result.get("code")
+
+            if error_code == "LINK_ALREADY_EXISTS":
+                # Give the user a clear prompt to update the link
+                link_str = interface.ask_string(
+                    "Link Conflict",
+                    f"The URL suffix '{link_str}' is already taken.\nPlease enter a unique alternative name:"
+                )
+                if not link_str:  # User canceled or entered empty string
+                    interface.print_error("Process aborted by user.")
+                    return False
+                link_str = verify_link_str_len(link_str, interface)
+                continue  # Re-evaluate loop with the newly typed link_str
+
+            else:
+                # Handle any other backend format validation errors
+                interface.print_error(f"FlipHTML5 rejected the configuration layout: {result}")
+                return False
+
+        # Case B: A critical system/network failure occurred (result is a string error message)
+        else:
+            interface.print_error(f"Critical System Fault: {result}")
+            if not interface.ask_yes_no("Retry Connection?", "Would you like to try sending the request again?"):
+                return False
+
+    # =========================================================
+    # GURANTEED SUCCESS ZONE
+    # =========================================================
+    interface.print_success(f"Book context successfully initialized. Target Book ID: {my_book_id}")
+
+    # Wait for backend processing pools to output assets
+    if interface.ask_yes_no("Set Password?", "Does the book need to be protected by a password? "):
+        from src.logic.excel_tools import get_password_from_excel
+        password_as_a_list = get_password_from_excel(row_index, interface)
+
+        if API_Automation.poll_conversion(my_book_id):
+            API_Automation.set_book_privacy_with_password(my_book_id, password_as_a_list)
+            interface.print_success(f"Set password {password_as_a_list}")
+
     my_book_id = API_Automation.create_book(uploaded_url, display_title, book_description, link_str) # Create book using custom definitions and design profiles
 
-    if my_book_id:
-        interface.print_info(f"Book context successfully initialized. Target Book ID: {my_book_id}")
+    while not isinstance(my_book_id, list):
+        if isinstance(my_book_id, dict):
+            error_code = my_book_id.get("code")
+            error_msg = my_book_id.get("msg")
 
-        # Wait for backend processing pools to output assets
-        if interface.ask_yes_no("Set Password?", "Does the book needs to be protected by a password? "):
-            from src.logic.excel_tools import get_password_from_excel
-            password_as_a_list = get_password_from_excel(row_index,interface)
+            if error_code == "'LINK_ALREADY_EXISTS'" and error_msg == "'LINK_ALREADY_EXISTS'":
+                link_str = interface.ask_string(f"A book with the link {link_str} already exists", "Please enter a new string for the URL of the book")
+                my_book_id = API_Automation.create_book(uploaded_url, display_title, book_description, link_str)
 
-            if API_Automation.poll_conversion(my_book_id):
-                # Lock book visibility down behind authorization passkeys
-                API_Automation.set_book_privacy_with_password(my_book_id, password_as_a_list)
-                interface.print_info(f"Set password {password_as_a_list}")
+        if isinstance(my_book_id, str):
+            interface.print_error(f"There was an error creating the book: {my_book_id}")
+
+    interface.print_info(f"Book context successfully initialized. Target Book ID: {my_book_id}")
+
+    # Wait for backend processing pools to output assets
+    if interface.ask_yes_no("Set Password?", "Does the book needs to be protected by a password? "):
+        from src.logic.excel_tools import get_password_from_excel
+        password_as_a_list = get_password_from_excel(row_index,interface)
+
+        if API_Automation.poll_conversion(my_book_id):
+            # Lock book visibility down behind authorization passkeys
+            API_Automation.set_book_privacy_with_password(my_book_id, password_as_a_list)
+            interface.print_info(f"Set password {password_as_a_list}")
 
     return True
