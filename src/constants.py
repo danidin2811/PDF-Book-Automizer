@@ -9,3 +9,40 @@ BOOK_TRACKER_EXCEL_FILE_PATH = Path(r"R:\Documents\001אתר האינטרנט ו
 PROMPT_PATH = Path(r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\python\PDF-Book-Automizer\src\gemini\gemini_con_prompt.txt")
 READY_TO_UPLOAD_TO_AMAZON_FOLDER = Path(r"R:\Documents\001אתר האינטרנט ופרויקטים דיגיטליים\הכנת כתבי עת לאתר\הכנת ספרים לאתר\קבצי ספרים מוכנים להעלאה לאמזון")
 FOLDER_NAME_COL: str = 'L'
+
+BASE_DESIGN_TEMPLATE = {
+    "phoneFlipShortcutButton": True,
+    "updateURLForPage": False,
+    "appLogoLinkURL": "https://ybz.org.il/",
+    "FlipStyle": "Switch",
+    "RightToLeft": True,
+    "loadingCaption": "טוען את הספר",
+    "loadingCaptionColor": "0xffffff",
+    "restorePageVisible": True,
+    "isAccessibilityButtonVisible": True,
+    "ZoomMapVisible": True,
+    "searchKeywordFontColor": "0xffb000",
+    "searchHightlightColor": "0xfdc606",
+    "ShareButtonVisible": False,
+    "BookMarkButtonVisible": True,
+    "HomeButtonVisible": True,
+    "AutoPlayButtonVisible": True,
+    "SelectTextButtonVisible": True,
+    "MagnifierButtonVisible": True,
+    "InstructionsButtonVisible": True,
+    "showInstructionOnStart": True,
+    "language": "Hebrew",
+    "LeftShadowWidth": 50,
+    "RightShadowWidth": 20,
+    "ShowTopLeftShadow": False
+}
+
+ENGLISH_DESIGN_TEMPLATE = {
+    **BASE_DESIGN_TEMPLATE,
+    "RightToLeft": False,
+}
+
+FREE_HEBREW_DESIGN_TEMPLATE = {
+    **BASE_DESIGN_TEMPLATE,
+    "ShareButtonVisible": True
+}

@@ -8,7 +8,8 @@ def verify_link_str_len(link_str, interface: AppInterface):
     return link_str
 
 
-def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppInterface):
+def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface: AppInterface):
+    from src.constants import BASE_DESIGN_TEMPLATE, FREE_HEBREW_DESIGN_TEMPLATE, ENGLISH_DESIGN_TEMPLATE
     from src.fliphtml5 import API_Automation
     from src.logic.file_operations import validate_pdf_path
     from pathlib import Path
@@ -27,64 +28,88 @@ def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppI
     upload_success, upload_result = API_Automation.upload_file(fin_pdf_path, interface)
 
     if not upload_success:
-        # This will now only handle actual SERVER/NETWORK upload errors, not bad paths!
         interface.print_error(f"Upload process failed: {upload_result}")
         return False
 
     uploaded_url = upload_result
     interface.print_success(f"File uploaded successfully to: {uploaded_url}")
 
-    book_description = interface.ask_string("Enter Descrtiption", "Please enter the book description in English, if none - leave empty: ")
+    book_description = interface.ask_string("Enter Description", "Please enter the book description in English, if none - leave empty: ")
 
     link_str = verify_link_str_len(folder_title, interface)
+
+    chosen_config = BASE_DESIGN_TEMPLATE
+    clean_choice = ""
+
+    while True:
+        user_design_template_choice = interface.ask_string(
+            "Select Design Template",
+            "Choose a design profile layout:\n"
+            "Enter '1' for Paid Hebrew\n"
+            "Enter '2' for Paid English\n"
+            "Enter '3' for Free Hebrew\n\n"
+            "Please enter 1, 2, or 3:"
+        )
+
+        if user_design_template_choice is None:
+            if interface.ask_yes_no("Abort?", "Do you want to cancel the entire book creation process?"):
+                interface.print_error("Process aborted by user.")
+                return False
+            continue
+
+        clean_choice = user_design_template_choice.strip()
+
+        if clean_choice == "1":
+            chosen_config = BASE_DESIGN_TEMPLATE
+            break
+
+        elif clean_choice == "2":
+            chosen_config = ENGLISH_DESIGN_TEMPLATE
+            break
+
+        elif clean_choice == "3":
+            chosen_config = FREE_HEBREW_DESIGN_TEMPLATE
+            break
+
+        interface.print_error(f"Invalid entry: '{clean_choice}'. You must select 1, 2, or 3.")
 
     success = False
     my_book_id = None
 
-    # Run an explicit control loop until the task succeeds, or the user cancels
     while not success:
-        # Trigger the call and unpack the stateful tuple
-        success, result = API_Automation.create_book(uploaded_url, display_title, book_description, link_str)
+        success, result = API_Automation.create_book(
+            uploaded_url, display_title, book_description, link_str, design_config=chosen_config
+        )
 
         if success:
-            my_book_id = result  # Now guaranteed to be a valid bookId string
+            my_book_id = result
             break
 
-        # --- ERROR HANDLING LAYER ---
-        # Case A: An API specification error occurred (result is a dictionary)
         if isinstance(result, dict):
             error_code = result.get("code")
 
             if error_code == "LINK_ALREADY_EXISTS":
-                # Give the user a clear prompt to update the link
                 link_str = interface.ask_string(
                     "Link Conflict",
                     f"The URL suffix '{link_str}' is already taken.\nPlease enter a unique alternative name:"
                 )
-                if not link_str:  # User canceled or entered empty string
+                if not link_str:
                     interface.print_error("Process aborted by user.")
                     return False
                 link_str = verify_link_str_len(link_str, interface)
-                continue  # Re-evaluate loop with the newly typed link_str
+                continue
 
             else:
-                # Handle any other backend format validation errors
                 interface.print_error(f"FlipHTML5 rejected the configuration layout: {result}")
                 return False
-
-        # Case B: A critical system/network failure occurred (result is a string error message)
         else:
             interface.print_error(f"Critical System Fault: {result}")
             if not interface.ask_yes_no("Retry Connection?", "Would you like to try sending the request again?"):
                 return False
 
-    # =========================================================
-    # GURANTEED SUCCESS ZONE
-    # =========================================================
     interface.print_success(f"Book context successfully initialized. Target Book ID: {my_book_id}")
 
-    # Wait for backend processing pools to output assets
-    if interface.ask_yes_no("Set Password?", "Does the book need to be protected by a password? "):
+    if clean_choice in ("1", "2"):
         from src.logic.excel_tools import get_password_from_excel
         password_as_a_list = get_password_from_excel(row_index, interface)
 
