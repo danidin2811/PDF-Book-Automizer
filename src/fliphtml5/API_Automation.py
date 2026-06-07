@@ -204,7 +204,7 @@ def set_book_privacy_with_password(book_id, passwords_list):
 # EXECUTION CONTROLLER
 # ==========================================
 if __name__ == "__main__":
-    target_pdf = r"C:\Users\system1\Desktop\3111025.pdf" # Your local input file path
+    target_pdf = input("Please enter the path of the PDF file: ").strip().strip('"')
 
     my_custom_title = input("Please enter a title: ")
     my_custom_desc = input("Please enter a description: ")
@@ -236,15 +236,19 @@ if __name__ == "__main__":
         "MagnifierButtonVisible": True,
         "InstructionsButtonVisible": True,
         "showInstructionOnStart": True,
+        "language": "Hebrew",
+        "LeftShadowWidth": 50,
+        "RightShadowWidth": 20,
+        "ShowTopLeftShadow": False
     }
 
     # Run the automated pipeline
-    interface = AppInterface(ui=None)
-    upload_success, upload_result = upload_file(Path(target_pdf), interface)
+    interface1 = AppInterface(ui=None)
+    upload_success, upload_result = upload_file(Path(target_pdf), interface1)
 
     if not upload_success:
         # This will now only handle actual SERVER/NETWORK upload errors, not bad paths!
-        interface.print_error(f"Upload process failed: {upload_result}")
+        interface1.print_error(f"Upload process failed: {upload_result}")
 
     uploaded_url = upload_result
     if uploaded_url:
