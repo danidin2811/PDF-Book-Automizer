@@ -92,30 +92,4 @@ def fliphtml5_automation(pdf_folder_path, book_titles, row_index, interface:AppI
             API_Automation.set_book_privacy_with_password(my_book_id, password_as_a_list)
             interface.print_success(f"Set password {password_as_a_list}")
 
-    my_book_id = API_Automation.create_book(uploaded_url, display_title, book_description, link_str) # Create book using custom definitions and design profiles
-
-    while not isinstance(my_book_id, list):
-        if isinstance(my_book_id, dict):
-            error_code = my_book_id.get("code")
-            error_msg = my_book_id.get("msg")
-
-            if error_code == "'LINK_ALREADY_EXISTS'" and error_msg == "'LINK_ALREADY_EXISTS'":
-                link_str = interface.ask_string(f"A book with the link {link_str} already exists", "Please enter a new string for the URL of the book")
-                my_book_id = API_Automation.create_book(uploaded_url, display_title, book_description, link_str)
-
-        if isinstance(my_book_id, str):
-            interface.print_error(f"There was an error creating the book: {my_book_id}")
-
-    interface.print_info(f"Book context successfully initialized. Target Book ID: {my_book_id}")
-
-    # Wait for backend processing pools to output assets
-    if interface.ask_yes_no("Set Password?", "Does the book needs to be protected by a password? "):
-        from src.logic.excel_tools import get_password_from_excel
-        password_as_a_list = get_password_from_excel(row_index,interface)
-
-        if API_Automation.poll_conversion(my_book_id):
-            # Lock book visibility down behind authorization passkeys
-            API_Automation.set_book_privacy_with_password(my_book_id, password_as_a_list)
-            interface.print_info(f"Set password {password_as_a_list}")
-
     return True
