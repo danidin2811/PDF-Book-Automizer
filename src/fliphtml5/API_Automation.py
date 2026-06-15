@@ -65,13 +65,15 @@ def upload_file(local_file_path:Path, interface:AppInterface) -> tuple[bool, str
 
     try:
         headers = generate_fliphtml5_headers(path, query_params=None)
+        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        headers["Accept"] = "application/json"
 
         interface.print_info(f"[DEBUG] Opening file binary stream...")
         with open(local_file_path, "rb") as f:
             files = {"file": (os.path.basename(local_file_path), f, "application/pdf")}
 
             interface.print_info(f"[DEBUG] Sending POST request to FlipHTML5...")
-            response = requests.post(url, headers=headers, files=files)
+            response = requests.post(url, headers=headers, files=files, timeout=60)
 
         # Check HTTP Status Codes before parsing JSON
         interface.print_info(f"[DEBUG] HTTP Response Status Code: {response.status_code}")
@@ -88,9 +90,14 @@ def upload_file(local_file_path:Path, interface:AppInterface) -> tuple[bool, str
             return False, f"[API Error] Upload rejected by server. Payload: {res_data}"
 
     except PermissionError:
-        return False, f"[Permission Error] Access Denied to '{local_file_path}'. File may be open elsewhere."
+        return False, f"[Permission Error] Access Denied to '{local_file_path}'. Check if the file is open in Acrobat/Word."
+
+    except requests.exceptions.Timeout:
+        return False, f"[Network Error] Upload timed out. The file might be too large or the network upload band is congested."
+
     except requests.exceptions.RequestException as req_err:
-        return False, f"[Network Error] Connection or HTTP issue during upload: {req_err}"
+        return False, f"[Network Error] Connection dropped by local host machine environment: {req_err}"
+
     except Exception as e:
         return False, f"[Unexpected Error] Critical failure: {str(e)}"
 
@@ -118,6 +125,7 @@ def create_book(file_src_url: str, title: str, description: str, link: str, desi
     }
 
     if design_config:
+        print(design_config)
         params["bookConfig"] = json.dumps(design_config)
 
     try:
@@ -196,6 +204,13 @@ def set_book_privacy_with_password(book_id, passwords_list):
     except Exception as e:
         print("Privacy configuration error:", str(e))
 
+def verify_link_str_len(link_str):
+    while len(link_str) > 40: # Keep looping as long as the title is too long
+        print(f"  [WARNING] Title too long: {len(link_str)} chars.")
+        link_str = input("Please enter a new book title (max 40 chars): ")
+
+    return link_str
+
 # ==========================================
 # EXECUTION CONTROLLER
 # ==========================================
@@ -247,22 +262,35 @@ if __name__ == "__main__":
         interface1.print_error(f"Upload process failed: {upload_result}")
 
     uploaded_url = upload_result
+    success = None
+    result = None
+
     if uploaded_url:
         print(f"File uploaded successfully to: {uploaded_url}")
 
         # Create book using custom definitions and design profiles
-        my_book_id = create_book(
-            file_src_url=uploaded_url,
-            title=my_custom_title,
-            description=my_custom_desc,
-            link = my_custom_link,
-            design_config=MY_DESIGN_CONFIG
+        success, result = create_book(
+            uploaded_url, my_custom_title, my_custom_desc, my_custom_link, design_config=MY_DESIGN_CONFIG
         )
 
-        if my_book_id:
-            print(f"Book context successfully initialized. Target Book ID: {my_book_id}")
+        if success:
+            my_book_id = result
 
-            # Wait for backend processing pools to output assets
-            if poll_conversion(my_book_id):
-                # Lock book visibility down behind authorization passkeys
-                set_book_privacy_with_password(my_book_id, MY_PASSWORDS)
+        if isinstance(result, dict):
+            error_code = result.get("code")
+
+            if error_code == "LINK_ALREADY_EXISTS":
+                print(f"The URL suffix '{my_custom_link}' is already taken.\nPlease enter a unique alternative name:")
+
+            else:
+                print(f"FlipHTML5 rejected the configuration layout: {result}")
+
+        else:
+            print(f"Critical System Fault: {result}")
+
+    print(f"Book context successfully initialized. Target Book ID: {my_book_id}")
+
+    # Wait for backend processing pools to output assets
+    if poll_conversion(my_book_id):
+        # Lock book visibility down behind authorization passkeys
+        set_book_privacy_with_password(my_book_id, MY_PASSWORDS)

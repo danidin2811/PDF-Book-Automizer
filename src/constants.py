@@ -31,10 +31,10 @@ BASE_DESIGN_TEMPLATE = {
     "MagnifierButtonVisible": True,
     "InstructionsButtonVisible": True,
     "showInstructionOnStart": True,
-    "language": "Hebrew",
     "LeftShadowWidth": 50,
     "RightShadowWidth": 20,
-    "ShowTopLeftShadow": False
+    "ShowTopLeftShadow": False,
+    "restorePageDuration": "1",
 }
 
 ENGLISH_DESIGN_TEMPLATE = {
